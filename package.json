@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "lint": "eslint .",
     "format": "prettier --write .",

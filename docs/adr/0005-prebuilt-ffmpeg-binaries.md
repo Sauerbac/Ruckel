@@ -4,6 +4,8 @@
 - Date: 2026-06-07
 - Supersedes: the original "compile FFmpeg from source via MSYS2" plan from the initial
   planning and backend sessions
+- Amended by: [ADR-0022](0022-ffmpeg-fetched-into-binaries.md) — binaries are *fetched into*
+  `binaries/` via a pinned, checksum-verified manifest rather than committed into it
 
 ## Context
 

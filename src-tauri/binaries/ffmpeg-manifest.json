@@ -1,0 +1,32 @@
+{
+  "_comment": "Pinned FFmpeg sidecar manifest. The binary BYTES are gitignored and fetched via `npm run fetch:ffmpeg`, which downloads the pinned archive, verifies every SHA-256 below, and fails loudly on any mismatch. Only this manifest is committed. See docs/adr/0022-ffmpeg-fetched-into-binaries.md and ADR-0003 (GPL).",
+  "schemaVersion": 1,
+  "targetTriple": "x86_64-pc-windows-msvc",
+  "ffmpegVersion": "n7.1.4-9-gc06af95f12-20260606",
+  "upstream": {
+    "source": "BtbN/FFmpeg-Builds",
+    "releaseTag": "autobuild-2026-06-06-13-18",
+    "releaseUrl": "https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-06-06-13-18",
+    "variant": "win64-gpl-7.1 (static, non-shared, dependency-free)",
+    "license": "GPL-3.0 — built with --enable-gpl --enable-version3 (see buildConfiguration)"
+  },
+  "archive": {
+    "asset": "ffmpeg-n7.1.4-9-gc06af95f12-win64-gpl-7.1.zip",
+    "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-06-13-18/ffmpeg-n7.1.4-9-gc06af95f12-win64-gpl-7.1.zip",
+    "sizeBytes": 157567224,
+    "sha256": "7570ea98a3bc04f45c14be7cc7f1560d7ff09dcec4cebba28ae904e9ea741a3e"
+  },
+  "binaries": [
+    {
+      "archivePath": "ffmpeg-n7.1.4-9-gc06af95f12-win64-gpl-7.1/bin/ffmpeg.exe",
+      "outputName": "ffmpeg-x86_64-pc-windows-msvc.exe",
+      "sha256": "b59d780fe37c67775d285402b7d1eed7c4bf396d07bedbe7ef35fedf481b7cbb"
+    },
+    {
+      "archivePath": "ffmpeg-n7.1.4-9-gc06af95f12-win64-gpl-7.1/bin/ffprobe.exe",
+      "outputName": "ffprobe-x86_64-pc-windows-msvc.exe",
+      "sha256": "2102d916ee3b244e415e7db5b1f690833d3f1d3f90cb2223ec4654b2a36d8037"
+    }
+  ],
+  "buildConfiguration": "--prefix=/ffbuild/prefix --pkg-config-flags=--static --pkg-config=pkg-config --cross-prefix=x86_64-w64-mingw32- --arch=x86_64 --target-os=mingw32 --enable-gpl --enable-version3 --disable-debug --disable-w32threads --enable-pthreads --enable-iconv --enable-zlib --enable-libxml2 --enable-libvmaf --enable-fontconfig --enable-libharfbuzz --enable-libfreetype --enable-libfribidi --enable-vulkan --enable-libshaderc --enable-libvorbis --disable-libxcb --disable-xlib --disable-libpulse --enable-gmp --enable-lzma --disable-liblcevc-dec --enable-opencl --enable-amf --enable-libaom --enable-libaribb24 --enable-avisynth --enable-chromaprint --enable-libdav1d --enable-libdavs2 --enable-libdvdread --enable-libdvdnav --disable-libfdk-aac --enable-ffnvcodec --enable-cuda-llvm --enable-frei0r --enable-libgme --enable-libkvazaar --enable-libaribcaption --enable-libass --enable-libbluray --enable-libjxl --enable-libmp3lame --enable-libopus --enable-libplacebo --enable-librist --enable-libssh --enable-libtheora --enable-libvpx --enable-libwebp --enable-libzmq --enable-lv2 --enable-libvpl --enable-openal --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopenh264 --enable-libopenjpeg --enable-libopenmpt --enable-librav1e --enable-librubberband --enable-schannel --enable-sdl2 --enable-libsnappy --enable-libsoxr --enable-libsrt --enable-libsvtav1 --enable-libtwolame --enable-libuavs3d --disable-libdrm --enable-vaapi --enable-libvidstab --enable-libvvenc --enable-libx264 --enable-libx265 --enable-libxavs2 --enable-libxvid --enable-libzimg --enable-libzvbi --extra-cflags=-DLIBTWOLAME_STATIC --extra-cxxflags= --extra-libs=-lgomp --extra-ldflags=-pthread --extra-ldexeflags= --cc=x86_64-w64-mingw32-gcc --cxx=x86_64-w64-mingw32-g++ --ar=x86_64-w64-mingw32-gcc-ar --ranlib=x86_64-w64-mingw32-gcc-ranlib --nm=x86_64-w64-mingw32-gcc-nm --extra-version=20260606"
+}

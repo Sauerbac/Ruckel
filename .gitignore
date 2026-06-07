@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# FFmpeg/ffprobe sidecars — bytes are fetched via `npm run fetch:ffmpeg`, verified against the
+# committed manifest (ADR-0005 / ADR-0022). Git-storage (LFS vs commit) is deferred to R2.
+/src-tauri/binaries/*
+!/src-tauri/binaries/ffmpeg-manifest.json
