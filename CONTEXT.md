@@ -10,6 +10,7 @@ This file is the **source of truth for domain vocabulary**. Decisions live in `d
 
 - **App framework:** Tauri v2 (Windows-only) — see [ADR-0001](docs/adr/0001-tauri-v2-windows-desktop.md)
 - **Frontend:** Svelte — see [ADR-0002](docs/adr/0002-svelte-frontend.md)
+- **Styling:** Tailwind CSS v4 — see [ADR-0021](docs/adr/0021-tailwind-css.md)
 - **Video backend:** FFmpeg + ffprobe, bundled as sidecar processes — see [ADR-0004](docs/adr/0004-ffmpeg-sidecar-not-ffi.md)
 - **License:** GPLv3 — see [ADR-0003](docs/adr/0003-gplv3-license.md)
 
@@ -60,3 +61,4 @@ Use these terms exactly. Don't drift to synonyms.
 | [0018](docs/adr/0018-frontend-design-system.md) | Frontend design system |
 | [0019](docs/adr/0019-frontend-window-and-layout.md) | Frontend window and layout |
 | [0020](docs/adr/0020-frontend-interaction-model.md) | Frontend interaction model |
+| [0021](docs/adr/0021-tailwind-css.md) | Tailwind CSS v4 for styling |
