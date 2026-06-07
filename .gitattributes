@@ -1,0 +1,13 @@
+# Normalise line endings: store everything LF in the repo, let Git check out
+# native on each platform. Stops the LF/CRLF churn on Windows checkouts.
+* text=auto eol=lf
+
+# Binary assets — never touch.
+*.png binary
+*.ico binary
+*.icns binary
+*.svg text eol=lf
+
+# Lockfiles are generated; keep them LF and out of diffs' line-ending noise.
+package-lock.json -diff
+src-tauri/Cargo.lock -diff
