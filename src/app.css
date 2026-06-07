@@ -1,0 +1,8 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4, CSS-first config. The Ruckel design system (ADR-0018 palette,
+ * Inter / JetBrains Mono, neo-brutalist tokens) is deliberately NOT wired up
+ * yet — this skeleton only proves the Tailwind pipeline runs end to end.
+ * When the design system lands, define tokens here via `@theme { ... }`.
+ */
