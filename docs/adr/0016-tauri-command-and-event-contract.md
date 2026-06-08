@@ -34,9 +34,14 @@ stream rather than monolithic handlers.
   ([ADR-0010](0010-preflight-encode-separation.md)) and the frontend phased reveal
   ([ADR-0020](0020-frontend-interaction-model.md)).
 - `PreflightResult` carries per-file probe metadata (`files: Vec<FileProbe>` — duration,
-  width, height) 1:1 with `plan` by position, so the frontend can show duration +
-  resolution after pre-flight without a second round-trip. `ConversionJob` stays clean
-  as the encoder input.
+  width, height, plus the source's on-disk `size_bytes`) 1:1 with `plan` by position, so
+  the frontend can show size, duration + resolution after pre-flight without a second
+  round-trip. `size_bytes` is filesystem metadata (not an ffprobe field) and is an `f64`
+  so the generated TS stays a plain `number`. `ConversionJob` stays clean as the encoder
+  input.
+- `PreflightResult.collisions` lists each planned `<stem>_ppt.mp4` already on disk so the
+  frontend resolves them before encoding (Override / Rename / Cancel, ADR-0014); the
+  resolved plan round-trips back through `start_conversion`.
 - Events drive Svelte stores directly ([ADR-0002](0002-svelte-frontend.md)).
 - Under Tauri v2 ([ADR-0001](0001-tauri-v2-windows-desktop.md)), these use the v2 command/event
   APIs.

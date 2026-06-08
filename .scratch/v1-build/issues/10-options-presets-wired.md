@@ -1,6 +1,6 @@
 # I2 — Options/presets wired
 
-Status: needs-triage
+Status: complete
 
 ## What to build
 

@@ -28,10 +28,17 @@ pub struct PreflightResult {
 /// amendment). 1:1 with `plan` by position — the frontend iterates both
 /// together. Kept separate from `ConversionJob` so the encoder input stays
 /// clean (the encoder re-probes duration and only needs the job fields).
+///
+/// `size_bytes` is the source file's on-disk size — filesystem metadata, not an
+/// ffprobe field — carried here so the frontend's phased reveal (ADR-0020) can
+/// show size from the first frame without a separate IPC round-trip. It is an
+/// `f64` (not `u64`) so the generated TS stays a plain `number`; exact for any
+/// real video size.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export_to = "ipc/")]
 pub struct FileProbe {
     pub duration_secs: f64,
     pub width: u32,
     pub height: u32,
+    pub size_bytes: f64,
 }

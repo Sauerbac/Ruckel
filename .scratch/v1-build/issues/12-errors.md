@@ -1,6 +1,6 @@
 # I4 — Errors
 
-Status: needs-triage
+Status: complete
 
 ## What to build
 

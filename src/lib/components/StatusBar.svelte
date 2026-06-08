@@ -1,8 +1,9 @@
 <!--
   Status / action bar (ADR-0019 / ADR-0020): a full-width solid-ink block
   carrying live batch state on the left and the primary action on the right.
-  Three states, driven by a discriminated `status` prop —
+  Four states, driven by a discriminated `status` prop —
 
+    idle        "NO FILES"               → inert (disabled) CONVERT
     ready       "N FILES · ~X MB"        → green CONVERT
     converting  green ● pulse + elapsed   → CANCEL, with an accent fill tracking
                                             overall batch progress
@@ -15,6 +16,7 @@
   import Button from './Button.svelte'
 
   export type StatusBarStatus =
+    | { state: 'idle' }
     | { state: 'ready'; fileCount: number; totalBytes: number }
     | { state: 'converting'; percent: number; elapsedSecs: number }
     | { state: 'done'; succeeded: number; failed: number }
@@ -47,7 +49,12 @@
     ></div>
   {/if}
 
-  {#if status.state === 'ready'}
+  {#if status.state === 'idle'}
+    <span class="font-mono text-[11px] tracking-[0.04em] text-muted uppercase"
+      >No files</span
+    >
+    <Button variant="primary" disabled>Convert</Button>
+  {:else if status.state === 'ready'}
     <span class="font-mono text-[11px] tracking-[0.04em] text-paper uppercase">
       {status.fileCount}
       {status.fileCount === 1 ? 'File' : 'Files'} · ~{formatBytes(status.totalBytes)}

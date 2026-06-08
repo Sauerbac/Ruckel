@@ -20,7 +20,12 @@
   let resolution = $state(1080)
 
   // --- F2 mock props (no live IPC; every state is driven from these). ---
-  const probe: FileProbe = { duration_secs: 754, width: 1920, height: 1080 }
+  const probe: FileProbe = {
+    duration_secs: 754,
+    width: 1920,
+    height: 1080,
+    size_bytes: 260_046_848,
+  }
 
   // OptionsPanel: one interactive instance on a preset, one on a Custom mix,
   // and one rendered in its disabled empty state.
@@ -315,9 +320,10 @@
     <h2
       class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
     >
-      Status bar — ready · converting · done
+      Status bar — idle · ready · converting · done
     </h2>
     <div class="flex max-w-2xl flex-col gap-3">
+      <StatusBar status={{ state: 'idle' }} />
       <StatusBar status={{ state: 'ready', fileCount: 3, totalBytes: 580_911_104 }} />
       <StatusBar
         status={{ state: 'converting', percent: 62, elapsedSecs: 95 }}

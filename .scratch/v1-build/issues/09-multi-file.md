@@ -1,6 +1,6 @@
 # I1 — Multi-file
 
-Status: needs-triage
+Status: complete
 
 ## What to build
 

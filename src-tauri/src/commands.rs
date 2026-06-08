@@ -11,7 +11,7 @@ use crate::encoder::{
     events, CancelledEvent, ConversionError, DoneEvent, FileDoneEvent, FileErrorEvent,
     ProgressEvent,
 };
-use crate::preflight::collision::output_path_for;
+use crate::preflight::collision::{output_path_for, Collision};
 use crate::preflight::plan::{ConversionJob, ConversionOptions};
 use crate::preflight::scanner;
 use crate::preflight::{FileProbe, PreflightResult};
@@ -28,13 +28,16 @@ pub struct EncoderState {
 ///
 /// Dropped paths are scanned into candidate files — folders walked flat,
 /// extension-filtered (B3, ADR-0009/0011) — then each candidate is probed for a
-/// video stream and turned into a job. The options/presets wiring (I2) and
-/// collision detection (I3) thicken this later; they only add to the plan,
-/// never change the contract.
+/// video stream and turned into a job. Each planned `<stem>_ppt.mp4` is checked
+/// against disk; any that already exists is reported as a collision (I3,
+/// ADR-0014) for the frontend to resolve before encoding. Every job starts on
+/// the Presentation default; the frontend overrides `options` from the chosen
+/// preset/controls before `start_conversion` (I2).
 #[tauri::command]
 pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
     let mut plan: Vec<ConversionJob> = Vec::new();
     let mut files: Vec<FileProbe> = Vec::new();
+    let mut collisions: Vec<Collision> = Vec::new();
 
     for source in scanner::scan(paths) {
         let probed = probe::probe(&source)?;
@@ -42,22 +45,36 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
             // Pre-flight error (ADR-0015): no video stream to convert.
             return Err(format!("{}: no video stream found", source.display()));
         }
+
+        let output = output_path_for(&source);
+        let job_index = plan.len() as u32;
+        // Collision detection (ADR-0014): an existing planned output is surfaced
+        // now so the user resolves it before any encode runs.
+        if output.exists() {
+            collisions.push(Collision {
+                job_index,
+                source_path: source.to_string_lossy().into_owned(),
+                output_path: output.to_string_lossy().into_owned(),
+            });
+        }
+
         plan.push(ConversionJob {
             source_path: source.to_string_lossy().into_owned(),
-            output_path: output_path_for(&source).to_string_lossy().into_owned(),
+            output_path: output.to_string_lossy().into_owned(),
             options: ConversionOptions::PRESENTATION,
         });
         files.push(FileProbe {
             duration_secs: probed.duration_secs,
             width: probed.width,
             height: probed.height,
+            size_bytes: std::fs::metadata(&source).map(|m| m.len() as f64).unwrap_or(0.0),
         });
     }
 
     Ok(PreflightResult {
         plan,
         files,
-        collisions: Vec::new(),
+        collisions,
     })
 }
 
