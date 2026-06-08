@@ -27,3 +27,6 @@ dist-ssr
 # committed manifest (ADR-0005 / ADR-0022). Git-storage (LFS vs commit) is deferred to R2.
 /src-tauri/binaries/*
 !/src-tauri/binaries/ffmpeg-manifest.json
+
+# dev assets
+assets/
