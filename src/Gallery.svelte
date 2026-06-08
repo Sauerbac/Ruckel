@@ -6,12 +6,45 @@
 -->
 <script lang="ts">
   import Button from './lib/components/Button.svelte'
+  import CollisionModal from './lib/components/CollisionModal.svelte'
+  import FileRow from './lib/components/FileRow.svelte'
+  import OptionsPanel from './lib/components/OptionsPanel.svelte'
   import Panel from './lib/components/Panel.svelte'
   import SegmentedControl from './lib/components/SegmentedControl.svelte'
+  import StatusBar from './lib/components/StatusBar.svelte'
   import Shell from './lib/shell/Shell.svelte'
+  import type { Collision, ConversionOptions, FileProbe } from './lib/ipc'
+  import { PRESETS } from './lib/options'
 
   let quality = $state('PRESENTATION')
   let resolution = $state(1080)
+
+  // --- F2 mock props (no live IPC; every state is driven from these). ---
+  const probe: FileProbe = { duration_secs: 754, width: 1920, height: 1080 }
+
+  // OptionsPanel: one interactive instance on a preset, one on a Custom mix,
+  // and one rendered in its disabled empty state.
+  let presetOpts = $state<ConversionOptions>({ ...PRESETS.PRESENTATION })
+  let customOpts = $state<ConversionOptions>({
+    resolution: 'P1080',
+    crf: 23,
+    framerate: 'Fps60',
+    audio: 'Kbps128',
+  })
+  let emptyOpts = $state<ConversionOptions>({ ...PRESETS.PRESENTATION })
+
+  const collisions: Collision[] = [
+    {
+      job_index: 0,
+      source_path: 'C:\\Users\\Simon\\Videos\\lecture_03.mp4',
+      output_path: 'C:\\Users\\Simon\\Videos\\lecture_03_ppt.mp4',
+    },
+    {
+      job_index: 1,
+      source_path: 'C:\\Users\\Simon\\Videos\\keynote_intro.mov',
+      output_path: 'C:\\Users\\Simon\\Videos\\keynote_intro_ppt.mp4',
+    },
+  ]
 
   const swatches = [
     { name: 'paper', hex: '#EDEBE6' },
@@ -202,6 +235,108 @@
           { label: 'ORIG', value: 0 },
         ]}
       />
+    </div>
+  </section>
+
+  <!-- ============================================================== -->
+  <!-- F2 — feature components, every locked state from mock props.    -->
+  <!-- ============================================================== -->
+
+  <!-- File row — the ADR-0020 phased reveal, one row per phase. -->
+  <section class="mb-10">
+    <h2
+      class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
+    >
+      File row — phased reveal
+    </h2>
+    <div class="flex max-w-md flex-col gap-3">
+      <FileRow fileName="lecture_03.mp4" sizeBytes={260_046_848} phase="dropped" />
+      <FileRow
+        fileName="lecture_03.mp4"
+        sizeBytes={260_046_848}
+        {probe}
+        phase="ready"
+      />
+      <FileRow
+        fileName="lecture_03.mp4"
+        sizeBytes={260_046_848}
+        {probe}
+        phase="converting"
+        percent={40}
+      />
+      <FileRow
+        fileName="lecture_03.mp4"
+        sizeBytes={260_046_848}
+        {probe}
+        phase="done"
+        outputPath="C:\Users\Simon\Videos\lecture_03_ppt.mp4"
+      />
+      <FileRow
+        fileName="keynote_intro.mov"
+        sizeBytes={88_080_384}
+        {probe}
+        phase="error"
+        errorMessage="ffmpeg exited 1: Unsupported codec (hevc) in stream 0"
+      />
+    </div>
+  </section>
+
+  <!-- Right-panel options — empty (disabled), a preset, and a Custom mix. -->
+  <section class="mb-10">
+    <h2
+      class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
+    >
+      Options panel — empty · preset · custom
+    </h2>
+    <div class="flex flex-wrap gap-6">
+      <div class="w-[300px]">
+        <p class="mb-2 font-mono text-[10px] text-muted uppercase">
+          Empty (disabled)
+        </p>
+        <OptionsPanel bind:options={emptyOpts} disabled />
+      </div>
+      <div class="w-[300px]">
+        <p class="mb-2 font-mono text-[10px] text-muted uppercase">
+          Preset selected
+        </p>
+        <OptionsPanel bind:options={presetOpts} />
+      </div>
+      <div class="w-[300px]">
+        <p class="mb-2 font-mono text-[10px] text-muted uppercase">
+          Custom (no preset match)
+        </p>
+        <OptionsPanel bind:options={customOpts} />
+      </div>
+    </div>
+  </section>
+
+  <!-- Status / action bar — all three states. -->
+  <section class="mb-10">
+    <h2
+      class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
+    >
+      Status bar — ready · converting · done
+    </h2>
+    <div class="flex max-w-2xl flex-col gap-3">
+      <StatusBar status={{ state: 'ready', fileCount: 3, totalBytes: 580_911_104 }} />
+      <StatusBar
+        status={{ state: 'converting', percent: 62, elapsedSecs: 95 }}
+      />
+      <StatusBar status={{ state: 'done', succeeded: 2, failed: 1 }} />
+    </div>
+  </section>
+
+  <!-- Collision modal — framed in a bounded box so the scrim is contained. -->
+  <section class="mb-10">
+    <h2
+      class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
+    >
+      Collision modal
+    </h2>
+    <div
+      class="relative h-[420px] w-[680px] overflow-hidden border-[1.5px] border-line bg-paper"
+    >
+      <CollisionModal {collisions} />
     </div>
   </section>
 

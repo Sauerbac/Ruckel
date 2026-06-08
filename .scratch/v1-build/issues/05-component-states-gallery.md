@@ -1,6 +1,6 @@
 # F2 — Component states in gallery
 
-Status: ready-for-agent
+Status: complete
 
 ## What to build
 
