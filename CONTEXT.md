@@ -35,7 +35,7 @@ Use these terms exactly. Don't drift to synonyms.
 | **The four options** | The only user-facing encode knobs: Resolution, Quality (CRF), Framerate cap, Audio bitrate. See [ADR-0007](docs/adr/0007-user-options-and-presets.md). |
 | **Preset** | A named bundle of all four option values: **Presentation**, **High Quality**, **Compact**. Selecting one snaps all four controls at once. |
 | **Custom** | A display-only state shown when the four controls don't match any preset. Not itself selectable. |
-| **Phased reveal** | The frontend pattern where a file row gains data in stages (on-drop → after pre-flight → during conversion → done/error) mirroring the backend phases. See [ADR-0020](docs/adr/0020-frontend-interaction-model.md). |
+| **Phased reveal** | The frontend pattern where a file row gains data in stages (on-drop → after pre-flight → during conversion → done/warning/error) mirroring the backend phases. See [ADR-0020](docs/adr/0020-frontend-interaction-model.md). |
 
 ## ADR index
 

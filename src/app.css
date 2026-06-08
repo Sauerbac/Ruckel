@@ -1,8 +1,99 @@
 @import 'tailwindcss';
 
 /*
- * Tailwind v4, CSS-first config. The Ruckel design system (ADR-0018 palette,
- * Inter / JetBrains Mono, neo-brutalist tokens) is deliberately NOT wired up
- * yet — this skeleton only proves the Tailwind pipeline runs end to end.
- * When the design system lands, define tokens here via `@theme { ... }`.
+ * Ruckel design system v2 — ADR-0018 (warm-light utilitarian neo-brutalism),
+ * ADR-0021 (Tailwind v4, CSS-first). Tokens live here in `@theme` so the locked
+ * values flow out as first-class utilities (`bg-paper`, `text-accent`,
+ * `font-mono`) rather than ad-hoc hex literals. Light/warm only; sharp corners
+ * (radius 0); heavy ink borders; zero box-shadow.
  */
+
+/* Bundled locally — no CDN (offline desktop app). See src/fonts/LICENSES.md. */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700; /* variable weight axis */
+  font-display: swap;
+  src: url('./fonts/space-grotesk-variable.woff2') format('woff2');
+}
+
+/* IBM Plex Mono is static on Fontsource — the three weights the handoff uses. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono-600.woff2') format('woff2');
+}
+
+@theme {
+  /* ADR-0018 v2 palette — warm light. */
+  --color-paper: #edebe6; /* app background (warm neutral)   */
+  --color-surface: #fbfaf8; /* panels, list surfaces           */
+  --color-fill: #e4e1da; /* recessed fills (toolbars/heads)  */
+  --color-ink: #16150f; /* near-black: text + ALL borders   */
+  --color-ink-2: #3a382f; /* secondary text                  */
+  --color-muted: #76736a; /* tertiary / meta text            */
+  --color-line: #c8c4b9; /* hairline interior borders       */
+
+  /* ADR-0018 v2 status triad — green reserved for live/success. */
+  --color-accent: #1fb866; /* success / active / live (THE accent) */
+  --color-accent-d: #159152; /* accent pressed / "done" text          */
+  --color-warning: #d9821a; /* collisions + skipped/filtered files   */
+  --color-danger: #c8341d; /* real encode failures                  */
+
+  /* ADR-0018 v2 typography. Space Grotesk for chrome, IBM Plex Mono for data. */
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+
+  /* ADR-0018 v2 shape: sharp corners everywhere, no exceptions. */
+  --radius-brut: 0;
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    /* Fixed, non-resizable window (ADR-0019): the chrome never scrolls. */
+    overflow: hidden;
+    /* Desktop-app chrome shouldn't feel like a web page. */
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The one sanctioned motion (ADR-0018): stepped terminal blink for the live
+     "converting" pulse — hard on/off, no smooth fade. */
+  @keyframes blink {
+    0%,
+    60% {
+      opacity: 1;
+    }
+    61%,
+    100% {
+      opacity: 0.3;
+    }
+  }
+}

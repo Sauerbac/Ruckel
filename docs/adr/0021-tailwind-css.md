@@ -7,8 +7,8 @@
 
 The frontend ([ADR-0002](0002-svelte-frontend.md)) needs a styling approach. The design
 system ([ADR-0018](0018-frontend-design-system.md)) defines a fixed palette, two typefaces,
-a 2px radius, and a deliberately small set of tokens — a utility-class workflow fits that
-disciplined, token-driven aesthetic well.
+sharp (0-radius) corners, and a deliberately small set of tokens — a utility-class workflow
+fits that disciplined, token-driven aesthetic well.
 
 The scaffold ([repo bootstrap, 2026-06-07]) wires Tailwind in but does **not** yet apply the
 design system: `src/app.css` is just `@import "tailwindcss";` and components use neutral

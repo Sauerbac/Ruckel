@@ -13,9 +13,11 @@
     "windows": [
       {
         "title": "Ruckel",
-        "width": 800,
-        "height": 600,
-        "resizable": true,
+        "width": 860,
+        "height": 560,
+        "resizable": false,
+        "maximizable": false,
+        "decorations": false,
         "fullscreen": false
       }
     ],
