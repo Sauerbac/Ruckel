@@ -1,2 +1,167 @@
 //! `#[tauri::command]` handlers. Kept thin — each handler delegates
 //! immediately into `preflight` or `encoder` (ADR-0016, ADR-0017).
+
+use std::path::Path;
+
+use tauri::{AppHandle, Emitter, State};
+
+use crate::encoder::cancel::CancelToken;
+use crate::encoder::runner::{self, EncodeError};
+use crate::encoder::{
+    events, CancelledEvent, ConversionError, DoneEvent, FileDoneEvent, FileErrorEvent,
+    ProgressEvent,
+};
+use crate::preflight::collision::output_path_for;
+use crate::preflight::plan::{ConversionJob, ConversionOptions};
+use crate::preflight::PreflightResult;
+use crate::probe;
+
+/// App-wide encoder state held in Tauri's managed-state registry: the shared
+/// cancellation flag the `cancel_conversion` command trips (ADR-0013).
+#[derive(Default)]
+pub struct EncoderState {
+    pub cancel: CancelToken,
+}
+
+/// `preflight` (ADR-0016): resolve dropped paths into a Conversion Plan.
+///
+/// Tracer scope (S2): a single dropped **file** → a one-job plan with the
+/// Presentation preset. The flat folder walk + extension filter (B3), the
+/// options/presets wiring (I2), and collision detection (I3) thicken this
+/// later — they only add to the plan, never change the contract.
+#[tauri::command]
+pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
+    let mut plan: Vec<ConversionJob> = Vec::new();
+
+    for path in paths {
+        let source = Path::new(&path);
+        let probed = probe::probe(source)?;
+        if !probed.has_video {
+            // Pre-flight error (ADR-0015): no video stream to convert.
+            return Err(format!("{path}: no video stream found"));
+        }
+        plan.push(ConversionJob {
+            source_path: path.clone(),
+            output_path: output_path_for(source).to_string_lossy().into_owned(),
+            options: ConversionOptions::PRESENTATION,
+        });
+    }
+
+    Ok(PreflightResult {
+        plan,
+        collisions: Vec::new(),
+    })
+}
+
+/// `start_conversion` (ADR-0016): run the plan, reporting progress via events.
+/// Returns immediately; the batch runs on a background thread.
+#[tauri::command]
+pub async fn start_conversion(
+    app: AppHandle,
+    state: State<'_, EncoderState>,
+    plan: Vec<ConversionJob>,
+) -> Result<(), String> {
+    let cancel = state.cancel.clone();
+    cancel.reset();
+    std::thread::spawn(move || run_batch(&app, &plan, &cancel));
+    Ok(())
+}
+
+/// `cancel_conversion` (ADR-0016): trip the shared flag; the encode thread
+/// kills FFmpeg and cleans up at its next progress read (ADR-0013).
+#[tauri::command]
+pub fn cancel_conversion(state: State<'_, EncoderState>) {
+    state.cancel.cancel();
+}
+
+/// Run every job sequentially (ADR-0009), emitting the contract events. A
+/// failed file is skipped and reported in the end-of-batch summary (ADR-0015);
+/// a cancel stops the batch and emits `conversion:cancelled` (ADR-0013).
+fn run_batch(app: &AppHandle, plan: &[ConversionJob], cancel: &CancelToken) {
+    let total = plan.len() as u32;
+    let mut succeeded = 0u32;
+    let mut failed = 0u32;
+    let mut errors: Vec<ConversionError> = Vec::new();
+
+    for (index, job) in plan.iter().enumerate() {
+        if cancel.is_cancelled() {
+            break;
+        }
+        let file_index = index as u32;
+        let file_name = file_name_of(&job.source_path);
+
+        // Duration drives the real percentage (ADR-0013); re-probed here rather
+        // than threaded through the user-facing job contract.
+        let duration = probe::probe(Path::new(&job.source_path))
+            .map(|p| p.duration_secs)
+            .unwrap_or(0.0);
+
+        let result = runner::encode(job, duration, cancel, |update| {
+            let _ = app.emit(
+                events::PROGRESS,
+                ProgressEvent {
+                    file_index,
+                    total_files: total,
+                    file_name: file_name.clone(),
+                    percent: update.percent,
+                    fps: update.fps,
+                    speed: update.speed,
+                },
+            );
+        });
+
+        match result {
+            Ok(output) => {
+                succeeded += 1;
+                let _ = app.emit(
+                    events::FILE_DONE,
+                    FileDoneEvent {
+                        file_index,
+                        output_path: output.to_string_lossy().into_owned(),
+                    },
+                );
+            }
+            Err(EncodeError::Cancelled) => {
+                let _ = app.emit(events::CANCELLED, CancelledEvent {});
+                return;
+            }
+            Err(EncodeError::Failed(message)) => {
+                failed += 1;
+                errors.push(ConversionError {
+                    file_name: file_name.clone(),
+                    error_message: message.clone(),
+                });
+                let _ = app.emit(
+                    events::FILE_ERROR,
+                    FileErrorEvent {
+                        file_index,
+                        file_name,
+                        error_message: message,
+                    },
+                );
+            }
+        }
+    }
+
+    if cancel.is_cancelled() {
+        let _ = app.emit(events::CANCELLED, CancelledEvent {});
+        return;
+    }
+
+    let _ = app.emit(
+        events::DONE,
+        DoneEvent {
+            succeeded,
+            failed,
+            errors,
+        },
+    );
+}
+
+/// Display name for events — the file's own name, not the full path.
+fn file_name_of(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
+}

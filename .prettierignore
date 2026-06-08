@@ -4,6 +4,10 @@ src-tauri/target
 src-tauri/gen
 package-lock.json
 
+# Generated from the Rust IPC contract (cargo test, S1) — Rust is the source of
+# truth, so these are excluded from Prettier rather than hand-formatted.
+src/lib/ipc
+
 # Hand-written prose docs are the source of truth — keep them out of Prettier.
 CLAUDE.md
 CONTEXT.md

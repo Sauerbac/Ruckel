@@ -1,6 +1,6 @@
 # S1 — Full IPC contract (ts-rs)
 
-Status: ready-for-agent
+Status: complete
 
 ## What to build
 
@@ -30,3 +30,35 @@ types and the codegen gate.
 ## Blocked by
 
 None - can start immediately.
+
+## Comments
+
+**Implemented (ts-rs 12).** Every ADR-0016 command + event payload is a Rust `serde`
+type deriving `TS`, in its ADR-0017 module home rather than a new `ipc` module:
+
+- `preflight/plan.rs`: `Resolution` / `Framerate` / `Audio` / `ConversionOptions`
+  (+ the three preset constants), `ConversionJob`, `ConversionPlan` (alias for
+  `Vec<ConversionJob>` → TS `ConversionJob[]`, no distinct type emitted).
+- `preflight/collision.rs`: `Collision`. `preflight/mod.rs`: `PreflightResult`.
+- `encoder/mod.rs`: `ProgressEvent` / `FileDoneEvent` / `FileErrorEvent` /
+  `ConversionError` / `DoneEvent` / `CancelledEvent`, plus an `events` module of
+  name constants (the single source of truth the runner emits with).
+
+**Codegen gate.** `tests/codegen.rs` (`cargo test`) writes `src/lib/ipc/<Type>.ts`
+(via ts-rs `export_to_string`), an `events.ts` constant map built from
+`encoder::events::ALL`, and an `index.ts` barrel. Verified deterministic:
+regenerating twice produces byte-identical output (zero diff). `src/lib/ipc/` is
+excluded from Prettier + ESLint (generated; Rust is the source of truth). The
+`git diff --exit-code` CI step that *fails* the build on drift is R2's to wire.
+
+**Frontend consumes it.** `src/lib/ipc-client.ts` imports the generated payload
+types + `CONVERSION_EVENTS` (no hand-written IPC types, no magic event strings).
+
+**⚠ Contract gap to decide (affects 05/F2).** ADR-0020's phased reveal shows
+*duration + resolution* on a file row after pre-flight, but ADR-0016's
+`PreflightResult` is `plan + collisions` only — neither `ConversionJob` nor any
+event carries probed duration/resolution. The frozen contract therefore can't
+feed that reveal today. Options: amend ADR-0016 to add per-file probe metadata to
+the pre-flight result (recommended, keeps the firewall intact for Phase 2), or
+decide the reveal drops those fields. Left unresolved here; flagged for triage
+before 05.
