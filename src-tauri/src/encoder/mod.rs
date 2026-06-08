@@ -7,6 +7,7 @@
 //! codegen mirrors both the payload shapes (`#[derive(TS)]`) and the name map
 //! (`events.ts`) onto the frontend — no magic strings, no hand-written types.
 
+pub mod args;
 pub mod cancel;
 pub mod progress;
 pub mod runner;

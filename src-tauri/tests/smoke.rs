@@ -146,6 +146,12 @@ fn encode_produces_valid_powerpoint_safe_ppt_mp4() {
         std::fs::metadata(&output).unwrap().len() > 0,
         "_ppt.mp4 should be non-empty"
     );
+    // The temp must have been promoted by the atomic rename, not left behind
+    // (ADR-0012).
+    assert!(
+        !scratch.path().join("clip_ppt.tmp.mp4").exists(),
+        "temp file must be renamed away on success"
+    );
 
     let percents = updates.into_inner();
     assert!(!percents.is_empty(), "progress callback should have fired");
@@ -191,4 +197,8 @@ fn cancel_leaves_no_output_file() {
 
     assert!(result.is_err(), "a cancelled encode should not succeed");
     assert!(!output.exists(), "cancel must leave no _ppt.mp4");
+    assert!(
+        !scratch.path().join("clip_ppt.tmp.mp4").exists(),
+        "cancel must leave no temp file (ADR-0012)"
+    );
 }

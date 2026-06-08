@@ -13,6 +13,7 @@ use crate::encoder::{
 };
 use crate::preflight::collision::output_path_for;
 use crate::preflight::plan::{ConversionJob, ConversionOptions};
+use crate::preflight::scanner;
 use crate::preflight::PreflightResult;
 use crate::probe;
 
@@ -25,24 +26,24 @@ pub struct EncoderState {
 
 /// `preflight` (ADR-0016): resolve dropped paths into a Conversion Plan.
 ///
-/// Tracer scope (S2): a single dropped **file** → a one-job plan with the
-/// Presentation preset. The flat folder walk + extension filter (B3), the
-/// options/presets wiring (I2), and collision detection (I3) thicken this
-/// later — they only add to the plan, never change the contract.
+/// Dropped paths are scanned into candidate files — folders walked flat,
+/// extension-filtered (B3, ADR-0009/0011) — then each candidate is probed for a
+/// video stream and turned into a job. The options/presets wiring (I2) and
+/// collision detection (I3) thicken this later; they only add to the plan,
+/// never change the contract.
 #[tauri::command]
 pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
     let mut plan: Vec<ConversionJob> = Vec::new();
 
-    for path in paths {
-        let source = Path::new(&path);
-        let probed = probe::probe(source)?;
+    for source in scanner::scan(paths) {
+        let probed = probe::probe(&source)?;
         if !probed.has_video {
             // Pre-flight error (ADR-0015): no video stream to convert.
-            return Err(format!("{path}: no video stream found"));
+            return Err(format!("{}: no video stream found", source.display()));
         }
         plan.push(ConversionJob {
-            source_path: path.clone(),
-            output_path: output_path_for(source).to_string_lossy().into_owned(),
+            source_path: source.to_string_lossy().into_owned(),
+            output_path: output_path_for(&source).to_string_lossy().into_owned(),
             options: ConversionOptions::PRESENTATION,
         });
     }

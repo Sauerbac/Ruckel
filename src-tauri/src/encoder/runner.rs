@@ -1,15 +1,15 @@
 //! Spawns FFmpeg per job, reads stdout/stderr, emits events (ADR-0013).
 //!
 //! The Tauri-facing batch loop lives in `commands.rs`; this module owns the
-//! single-job encode so it is testable without a running Tauri app. The tracer
-//! (S2) hardcodes the Presentation values and writes the output directly;
-//! later slices refine it — the options→args mapping (B2) and the temp-file +
-//! atomic rename (B1).
+//! single-job encode so it is testable without a running Tauri app. The command
+//! line comes from the pure [`super::args::ffmpeg_args`] mapping (B2); the
+//! temp-file + atomic rename (B1) still pends.
 
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use super::args::ffmpeg_args;
 use super::cancel::CancelToken;
 use super::progress::{percent_of, ProgressParser};
 use crate::preflight::plan::ConversionJob;
@@ -22,55 +22,16 @@ pub struct EncodeUpdate {
     pub speed: f64,
 }
 
-/// Build the FFmpeg argument vector for a job. The PowerPoint-safe flags
-/// (ADR-0006) are always present and no `-level` is ever emitted. The tracer
-/// hardcodes the **Presentation** values (CRF 23 / AAC 128k, resolution and
-/// framerate untouched); B2 replaces the quality/scale/rate/audio portion with
-/// the options→args mapping derived from `job.options`.
-pub fn ffmpeg_args(job: &ConversionJob, output: &Path) -> Vec<String> {
-    let mut args: Vec<String> = vec![
-        "-hide_banner".into(),
-        "-loglevel".into(),
-        "error".into(),
-        // Overwrite the (temp/)output path; real collisions are resolved in
-        // pre-flight (ADR-0014), so reaching here means writing is intended.
-        "-y".into(),
-        "-i".into(),
-        job.source_path.clone(),
-    ];
-
-    // PowerPoint-safe video, fixed and non-user-facing (ADR-0006).
-    args.extend(
-        [
-            "-c:v",
-            "libx264",
-            "-profile:v",
-            "high",
-            "-pix_fmt",
-            "yuv420p",
-            "-preset",
-            "medium",
-        ]
-        .map(String::from),
-    );
-    // Quality — tracer: Presentation CRF 23.
-    args.extend(["-crf", "23"].map(String::from));
-    // PowerPoint-safe audio (ADR-0006) — tracer: Presentation 128k.
-    args.extend(["-c:a", "aac", "-b:a", "128k"].map(String::from));
-    // Faststart muxer flag — instant load in PowerPoint (ADR-0006).
-    args.extend(["-movflags", "+faststart"].map(String::from));
-    // Machine-readable progress on stdout at ~2 Hz (ADR-0013).
-    args.extend(["-progress", "pipe:1", "-stats_period", "0.5", "-nostats"].map(String::from));
-
-    args.push(output.to_string_lossy().into_owned());
-    args
-}
-
 /// Encode one job with the bundled FFmpeg sidecar, invoking `on_progress` for
-/// every `-progress` block. Returns the written output path on success.
+/// every `-progress` block. Returns the final output path on success.
 ///
-/// Cancellation (ADR-0013): when the token trips, FFmpeg is killed and the
-/// partial output deleted, returning [`EncodeError::Cancelled`].
+/// Output safety (ADR-0012): FFmpeg writes to `<stem>.tmp.mp4` in the
+/// destination folder; only after a clean exit is it renamed atomically to the
+/// final `<stem>_ppt.mp4` (same-volume, so the rename is truly atomic). A
+/// crash, error, or cancel deletes the temp file, so the destination is only
+/// ever replaced by a complete, valid file and no partial `_ppt.mp4` is ever
+/// left behind. Cancellation (ADR-0013) kills FFmpeg and returns
+/// [`EncodeError::Cancelled`].
 pub fn encode<F>(
     job: &ConversionJob,
     duration_secs: f64,
@@ -80,10 +41,11 @@ pub fn encode<F>(
 where
     F: FnMut(EncodeUpdate),
 {
-    let output = PathBuf::from(&job.output_path);
+    let final_path = PathBuf::from(&job.output_path);
+    let temp_path = temp_path_for(&final_path);
 
     let mut child = crate::sidecar_command("ffmpeg")
-        .args(ffmpeg_args(job, &output))
+        .args(ffmpeg_args(job, &temp_path))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -110,7 +72,7 @@ where
         if cancel.is_cancelled() {
             let _ = child.kill();
             let _ = child.wait();
-            let _ = std::fs::remove_file(&output);
+            let _ = std::fs::remove_file(&temp_path);
             return Err(EncodeError::Cancelled);
         }
         let Ok(line) = line else { break };
@@ -132,16 +94,36 @@ where
         .unwrap_or_default();
 
     if cancel.is_cancelled() {
-        let _ = std::fs::remove_file(&output);
+        let _ = std::fs::remove_file(&temp_path);
         return Err(EncodeError::Cancelled);
     }
 
     if !status.success() {
-        let _ = std::fs::remove_file(&output);
+        let _ = std::fs::remove_file(&temp_path);
         return Err(EncodeError::Failed(ffmpeg_error_message(&log)));
     }
 
-    Ok(output)
+    // Atomic promote: the temp lives in the destination folder, so this is a
+    // same-volume rename (ADR-0012). On failure, drop the temp so no partial
+    // file is left behind.
+    std::fs::rename(&temp_path, &final_path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp_path);
+        EncodeError::Failed(format!("failed to finalize output: {e}"))
+    })?;
+
+    Ok(final_path)
+}
+
+/// The in-progress temp path beside the final output (ADR-0012):
+/// `<stem>.tmp.mp4` in the destination folder, keeping the success rename
+/// same-volume and therefore atomic.
+fn temp_path_for(final_path: &Path) -> PathBuf {
+    let stem = final_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "output".into());
+    let dir = final_path.parent().unwrap_or_else(|| Path::new("."));
+    dir.join(format!("{stem}.tmp.mp4"))
 }
 
 /// Distinguishes a clean cancel from a real failure so the batch loop can
@@ -178,42 +160,12 @@ fn ffmpeg_error_message(log: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::preflight::plan::ConversionOptions;
-
-    fn job() -> ConversionJob {
-        ConversionJob {
-            source_path: "in.mov".into(),
-            output_path: "out_ppt.mp4".into(),
-            options: ConversionOptions::PRESENTATION,
-        }
-    }
 
     #[test]
-    fn args_carry_every_powerpoint_safe_flag_and_no_level() {
-        let args = ffmpeg_args(&job(), Path::new("out_ppt.mp4"));
-        let joined = args.join(" ");
-        for needle in [
-            "-c:v libx264",
-            "-profile:v high",
-            "-pix_fmt yuv420p",
-            "-movflags +faststart",
-            "-c:a aac",
-        ] {
-            assert!(joined.contains(needle), "missing {needle:?} in {joined:?}");
-        }
-        assert!(!args.iter().any(|a| a == "-level"), "must not emit -level");
-    }
-
-    #[test]
-    fn args_request_progress_on_stdout() {
-        let args = ffmpeg_args(&job(), Path::new("out_ppt.mp4"));
-        assert!(args.windows(2).any(|w| w == ["-progress", "pipe:1"]));
-    }
-
-    #[test]
-    fn output_path_is_the_last_arg() {
-        let args = ffmpeg_args(&job(), Path::new("out_ppt.mp4"));
-        assert_eq!(args.last().unwrap(), "out_ppt.mp4");
+    fn temp_path_sits_beside_final_as_tmp_mp4() {
+        let temp = temp_path_for(Path::new("/videos/clip_ppt.mp4"));
+        assert_eq!(temp.file_name().unwrap(), "clip_ppt.tmp.mp4");
+        assert_eq!(temp.parent().unwrap(), Path::new("/videos"));
     }
 
     #[test]
