@@ -54,11 +54,8 @@ excluded from Prettier + ESLint (generated; Rust is the source of truth). The
 **Frontend consumes it.** `src/lib/ipc-client.ts` imports the generated payload
 types + `CONVERSION_EVENTS` (no hand-written IPC types, no magic event strings).
 
-**⚠ Contract gap to decide (affects 05/F2).** ADR-0020's phased reveal shows
-*duration + resolution* on a file row after pre-flight, but ADR-0016's
-`PreflightResult` is `plan + collisions` only — neither `ConversionJob` nor any
-event carries probed duration/resolution. The frozen contract therefore can't
-feed that reveal today. Options: amend ADR-0016 to add per-file probe metadata to
-the pre-flight result (recommended, keeps the firewall intact for Phase 2), or
-decide the reveal drops those fields. Left unresolved here; flagged for triage
-before 05.
+**✅ Contract gap resolved (2026-06-08).** ADR-0016 amended: `PreflightResult` widened to
+`{ plan, files, collisions }` where `files: Vec<FileProbe>` carries `duration_secs` +
+`width`/`height` per file, 1:1 with `plan` by position. `probe.rs` now extracts coded
+dimensions from the first video stream. The Typescript contract regenerated cleanly
+(`FileProbe.ts` new, `PreflightResult.ts` updated). 05 (F2) unblocked.

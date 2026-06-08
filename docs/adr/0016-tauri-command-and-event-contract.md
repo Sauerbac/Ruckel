@@ -14,7 +14,7 @@ stream rather than monolithic handlers.
 
 | Command | Input | Returns |
 |---|---|---|
-| `preflight` | `paths: Vec<String>` | `PreflightResult` (plan + collisions) |
+| `preflight` | `paths: Vec<String>` | `PreflightResult` (plan + files + collisions) |
 | `start_conversion` | `plan: Vec<ConversionJob>` | `()` (progress via events) |
 | `cancel_conversion` | — | `()` |
 
@@ -33,6 +33,10 @@ stream rather than monolithic handlers.
 - Pre-flight and encode are separate round-trips, matching the phase split
   ([ADR-0010](0010-preflight-encode-separation.md)) and the frontend phased reveal
   ([ADR-0020](0020-frontend-interaction-model.md)).
+- `PreflightResult` carries per-file probe metadata (`files: Vec<FileProbe>` — duration,
+  width, height) 1:1 with `plan` by position, so the frontend can show duration +
+  resolution after pre-flight without a second round-trip. `ConversionJob` stays clean
+  as the encoder input.
 - Events drive Svelte stores directly ([ADR-0002](0002-svelte-frontend.md)).
 - Under Tauri v2 ([ADR-0001](0001-tauri-v2-windows-desktop.md)), these use the v2 command/event
   APIs.

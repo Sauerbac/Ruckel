@@ -18,6 +18,7 @@ use ruckel_lib::preflight::plan::{
     Audio, ConversionJob, ConversionOptions, Framerate, Resolution,
 };
 use ruckel_lib::preflight::PreflightResult;
+use ruckel_lib::preflight::FileProbe;
 
 /// Repo-root `src/lib/ipc/` (the test runs from `src-tauri/`).
 fn ipc_dir() -> PathBuf {
@@ -57,6 +58,7 @@ fn generate_ipc_bindings() {
         ConversionJob,
         Collision,
         PreflightResult,
+        FileProbe,
         ProgressEvent,
         FileDoneEvent,
         FileErrorEvent,

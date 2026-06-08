@@ -12,12 +12,26 @@ use ts_rs::TS;
 use collision::Collision;
 use plan::ConversionJob;
 
-/// The output of pre-flight (ADR-0010, ADR-0016): the fully-resolved plan plus
-/// any output-path collisions the frontend must resolve before encoding.
-/// Part of the frozen IPC contract (S1).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+/// The output of pre-flight (ADR-0010, ADR-0016): the fully-resolved plan,
+/// per-file probe metadata (duration + resolution for the frontend's phased
+/// reveal, ADR-0020), and any output-path collisions the frontend must resolve
+/// before encoding. Part of the frozen IPC contract (S1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export_to = "ipc/")]
 pub struct PreflightResult {
     pub plan: Vec<ConversionJob>,
+    pub files: Vec<FileProbe>,
     pub collisions: Vec<Collision>,
+}
+
+/// Per-file probe metadata surfaced in the pre-flight result (ADR-0020, S1
+/// amendment). 1:1 with `plan` by position — the frontend iterates both
+/// together. Kept separate from `ConversionJob` so the encoder input stays
+/// clean (the encoder re-probes duration and only needs the job fields).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export_to = "ipc/")]
+pub struct FileProbe {
+    pub duration_secs: f64,
+    pub width: u32,
+    pub height: u32,
 }

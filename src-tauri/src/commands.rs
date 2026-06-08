@@ -14,7 +14,7 @@ use crate::encoder::{
 use crate::preflight::collision::output_path_for;
 use crate::preflight::plan::{ConversionJob, ConversionOptions};
 use crate::preflight::scanner;
-use crate::preflight::PreflightResult;
+use crate::preflight::{FileProbe, PreflightResult};
 use crate::probe;
 
 /// App-wide encoder state held in Tauri's managed-state registry: the shared
@@ -34,6 +34,7 @@ pub struct EncoderState {
 #[tauri::command]
 pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
     let mut plan: Vec<ConversionJob> = Vec::new();
+    let mut files: Vec<FileProbe> = Vec::new();
 
     for source in scanner::scan(paths) {
         let probed = probe::probe(&source)?;
@@ -46,10 +47,16 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
             output_path: output_path_for(&source).to_string_lossy().into_owned(),
             options: ConversionOptions::PRESENTATION,
         });
+        files.push(FileProbe {
+            duration_secs: probed.duration_secs,
+            width: probed.width,
+            height: probed.height,
+        });
     }
 
     Ok(PreflightResult {
         plan,
+        files,
         collisions: Vec::new(),
     })
 }
