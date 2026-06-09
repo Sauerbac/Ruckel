@@ -47,9 +47,13 @@
   {/if}
 
   {#if notice}
-    <!-- Transient override (ADR-0025): supplants the status line for ~2.5s. -->
-    <span class="font-mono text-[11px] tracking-[0.04em] text-warning uppercase"
-      >{notice}</span
+    <!-- Transient override (ADR-0025): supplants the status line for ~2.5s.
+         Every notice we emit is short by construction; min-w-0 + truncate is
+         insurance so a hypothetically long one can never push the 44px bar's
+         layout (ADR-0026). -->
+    <span
+      class="min-w-0 max-w-full truncate font-mono text-[11px] tracking-[0.04em]
+             text-warning uppercase">{notice}</span
     >
   {:else if status.state === 'idle'}
     <span class="font-mono text-[11px] tracking-[0.04em] text-muted uppercase"
