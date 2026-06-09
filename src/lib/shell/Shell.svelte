@@ -2,8 +2,14 @@
   Application shell (ADR-0019 v2 layout) wired to the live IPC contract — the
   Phase 3 feature integration (I1 multi-file · I2 options/presets · I3 collision
   · I4 errors · I5 cancel). A 1.5px ink outer frame around a solid-ink title
-  bar, a two-panel split (left: drop target / file list, right: options), and a
-  full-width StatusBar action bar.
+  bar, a two-panel split (left: drop target / file list, right: options with a
+  pinned rail-footer action), and a full-width status-only StatusBar.
+
+  The primary action lives in the right panel's pinned footer (ADR-0024): a
+  single morphing slot — disabled Convert (no files) → green Convert (ready) →
+  danger Cancel (converting) → green Convert (done/re-run). It sits beside the
+  OptionsPanel rather than inside it so it stays live while the panel is
+  `disabled` mid-encode.
 
   The whole app is a small state machine over `phase`:
 
@@ -12,8 +18,9 @@
     ready     N file rows + live options; CONVERT (opens the collision modal
               first when pre-flight found existing outputs)
     converting sequential encode (ADR-0009); the active row shows progress, the
-              rest queued/done; CANCEL kills the in-flight job (ADR-0013)
-    done      per-file outcomes retained; "N done · N errors"; CLEAR / again
+              rest queued/done; the footer CANCEL kills the in-flight job (ADR-0013)
+    done      per-file outcomes retained; "N done · N errors"; the footer Convert
+              re-runs the batch (routing through collisions like any convert)
 
   The frontend owns no encode logic: it sends a resolved Conversion Plan to
   `start_conversion` and reflects the `conversion:*` event stream back onto the
@@ -23,6 +30,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
   import TitleBar from './TitleBar.svelte'
+  import Button from '../components/Button.svelte'
   import FileRow, { type FileRowPhase } from '../components/FileRow.svelte'
   import OptionsPanel from '../components/OptionsPanel.svelte'
   import StatusBar, {
@@ -277,10 +285,6 @@
     cancelConversion() // the encoder kills FFmpeg; we transition on `cancelled`
   }
 
-  function convertAgain() {
-    beginBatch(rows)
-  }
-
   function reset() {
     stopTimer()
     phase = 'idle'
@@ -476,27 +480,45 @@
       {/if}
     </section>
 
-    <!-- Right: options. Dimmed/inert until at least one file is loaded
-         (ADR-0020); locked during an in-flight batch so the live plan can't
-         shift under the encoder. -->
+    <!-- Right: options + the pinned rail-footer action (ADR-0024). The options
+         are dimmed/inert until a file is loaded (ADR-0020) and locked during an
+         in-flight batch; the footer button is a sibling (not inside the panel)
+         so it stays live as Cancel while the panel is disabled mid-encode. -->
     <aside
-      class="flex w-[330px] shrink-0 flex-col overflow-auto border-l-[1.5px]
-             border-ink bg-surface p-4"
+      class="flex w-[330px] shrink-0 flex-col border-l-[1.5px] border-ink
+             bg-surface"
     >
-      <OptionsPanel
-        bind:options
-        disabled={rows.length === 0 || phase === 'converting'}
-      />
+      <div class="min-h-0 flex-1 overflow-auto p-4">
+        <OptionsPanel
+          bind:options
+          disabled={rows.length === 0 || phase === 'converting'}
+        />
+      </div>
+      <!-- Single morphing action slot, pinned below the knobs it acts on. -->
+      <div class="shrink-0 p-4">
+        {#if phase === 'converting'}
+          <Button
+            variant="danger"
+            size="lg"
+            class="w-full justify-center"
+            onclick={onCancel}>Cancel</Button
+          >
+        {:else}
+          <Button
+            variant="primary"
+            size="lg"
+            class="w-full justify-center"
+            disabled={rows.length === 0}
+            onclick={onConvert}>Convert</Button
+          >
+        {/if}
+      </div>
     </aside>
   </main>
 
-  <!-- Full-width status / action bar (ADR-0019 / ADR-0020). -->
-  <StatusBar
-    {status}
-    onConvert={phase === 'done' ? convertAgain : onConvert}
-    {onCancel}
-    onClear={reset}
-  />
+  <!-- Full-width status-only bar (ADR-0019 / ADR-0024): batch state + the
+       global progress fill; the action lives in the rail footer above. -->
+  <StatusBar {status} />
 
   <!-- Collision resolution (ADR-0014): blocks the encode until resolved. -->
   {#if showCollisions}

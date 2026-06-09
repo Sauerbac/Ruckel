@@ -51,6 +51,11 @@ this."
 
 **Status / action bar (full-width solid-ink block):**
 
+> **Superseded by [ADR-0024](0024-frontend-action-model-revision.md):** the primary
+> action moved to a **pinned right-rail footer** (the single morphing slot:
+> Convert → Cancel → Convert). This bar is now **status-only** — no `CLEAR`, no
+> `CONVERT AGAIN`. The table below is retained for history.
+
 | State | Left | Right |
 |---|---|---|
 | Ready | "N FILES · ~X MB" (mono) | Green "CONVERT" (`.btn.accent`) |

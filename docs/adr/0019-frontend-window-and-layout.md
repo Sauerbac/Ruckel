@@ -25,9 +25,12 @@ uppercase (Space Grotesk wordmark acceptable; mono is fine too). `data-tauri-dra
 for drag-to-move. Right: **real** Close and Minimize controls only — sharp squares,
 hover-invert — no maximize (meaningless at fixed size). No decorative dots or meta.
 
-**Status / action bar:** a **solid-ink block** spanning both panels (per ADR-0020 it
-carries live state + the primary action). A green `●` pulse appears here only while
-encoding.
+**Status / action bar:** a **solid-ink block** spanning both panels. A green `●`
+pulse appears here only while encoding.
+
+> **Revised by [ADR-0024](0024-frontend-action-model-revision.md):** the bar is now
+> **status-only** — it carries live state and the full-width progress fill, but **no
+> buttons**. The primary action (Convert/Cancel) moved to a pinned right-rail footer.
 
 **Layout:** two-panel split between title bar and status bar —
 

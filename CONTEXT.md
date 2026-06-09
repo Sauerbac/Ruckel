@@ -62,3 +62,6 @@ Use these terms exactly. Don't drift to synonyms.
 | [0019](docs/adr/0019-frontend-window-and-layout.md) | Frontend window and layout |
 | [0020](docs/adr/0020-frontend-interaction-model.md) | Frontend interaction model |
 | [0021](docs/adr/0021-tailwind-css.md) | Tailwind CSS v4 for styling |
+| [0022](docs/adr/0022-ffmpeg-fetched-into-binaries.md) | FFmpeg fetched into binaries |
+| [0023](docs/adr/0023-frontend-polish-v2.md) | Frontend polish v2 — tooltips, layout stability, list & row affordances |
+| [0024](docs/adr/0024-frontend-action-model-revision.md) | Frontend action model — rail-footer Convert, status-only bar, de-chipped meta line |

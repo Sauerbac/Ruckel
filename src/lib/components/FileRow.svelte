@@ -104,13 +104,12 @@
     </span>
   </div>
 
-  <!-- Meta line: format chip + size always; duration + resolution once probed. -->
+  <!-- Meta line: plain dot-separated data — ext + size always; duration +
+       resolution once probed. De-chipped per ADR-0024 (no box on plain data). -->
   <div class="flex items-center gap-2 font-mono text-[11px] text-muted">
     {#if ext}
-      <span
-        class="border border-line px-1.5 py-px text-[10px] tracking-[0.08em]
-               uppercase">{ext}</span
-      >
+      <span class="uppercase">{ext}</span>
+      <span aria-hidden="true">·</span>
     {/if}
     <span>{formatBytes(sizeBytes)}</span>
     {#if probe}

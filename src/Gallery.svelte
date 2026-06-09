@@ -186,9 +186,21 @@
     </h2>
     <div class="flex flex-wrap items-center gap-3">
       <Button variant="primary">Convert</Button>
-      <Button variant="default">Clear</Button>
+      <Button variant="default">Default</Button>
       <Button variant="danger">Cancel</Button>
       <Button variant="primary" disabled>Convert</Button>
+    </div>
+    <!-- Large size — the pinned rail-footer action (ADR-0024). -->
+    <div class="mt-3 flex max-w-[300px] flex-col gap-3">
+      <Button variant="primary" size="lg" class="w-full justify-center"
+        >Convert</Button
+      >
+      <Button variant="danger" size="lg" class="w-full justify-center"
+        >Cancel</Button
+      >
+      <Button variant="primary" size="lg" disabled class="w-full justify-center"
+        >Convert</Button
+      >
     </div>
   </section>
 
@@ -326,7 +338,8 @@
     </div>
   </section>
 
-  <!-- Status / action bar — all three states. -->
+  <!-- Status-only bar (ADR-0024) — all four states; the action moved to the
+       rail footer, so the bar carries state + the converting progress fill only. -->
   <section class="mb-10">
     <h2
       class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"

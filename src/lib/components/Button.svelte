@@ -10,13 +10,19 @@
   import type { HTMLButtonAttributes } from 'svelte/elements'
 
   type Variant = 'default' | 'primary' | 'danger'
+  type Size = 'sm' | 'lg'
 
   let {
     variant = 'default',
+    size = 'sm',
     children,
     class: extra = '',
     ...rest
-  }: HTMLButtonAttributes & { variant?: Variant; children: Snippet } = $props()
+  }: HTMLButtonAttributes & {
+    variant?: Variant
+    size?: Size
+    children: Snippet
+  } = $props()
 
   const variants: Record<Variant, string> = {
     default: 'bg-surface text-ink hover:bg-ink hover:text-paper',
@@ -24,16 +30,22 @@
       'bg-accent text-ink font-semibold border-ink hover:bg-accent-d hover:text-ink',
     danger: 'bg-surface text-danger hover:bg-danger hover:text-paper',
   }
+
+  // `sm` is the chrome default; `lg` is the pinned rail-footer action (ADR-0024).
+  const sizes: Record<Size, string> = {
+    sm: 'h-[26px] px-3 text-[11px]',
+    lg: 'h-11 px-4 text-[12px]',
+  }
 </script>
 
 <button
-  class="inline-flex h-[26px] cursor-default items-center gap-[7px] border-[1.5px]
-         border-ink px-3 font-mono text-[11px] tracking-[0.06em] uppercase
+  class="inline-flex cursor-default items-center gap-[7px] border-[1.5px]
+         border-ink font-mono tracking-[0.06em] uppercase
          outline-none focus-visible:outline-2 focus-visible:outline-offset-0
          focus-visible:outline-accent
          disabled:cursor-default disabled:border-line disabled:bg-fill
          disabled:text-muted disabled:hover:bg-fill disabled:hover:text-muted
-         {variants[variant]} {extra}"
+         {sizes[size]} {variants[variant]} {extra}"
   {...rest}
 >
   {@render children()}

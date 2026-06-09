@@ -124,3 +124,8 @@ the row's first line (it sat beside the outcome badge and remove ✕) down to th
 1920×1080`). Line 1 is now just filename + outcome badge + remove, and the
 dot-separated meta line (a left-panel data line, not chrome) keeps its `·`
 separators.
+
+> **Revised by [ADR-0024](0024-frontend-action-model-revision.md):** the extension is
+> **de-chipped** — plain mono, uppercase, dot-separated with the rest
+> (`MOV · 248 MB · 12:34 · 1920×1080`). Outline boxes are reserved for the **Custom**
+> indicator; filled boxes for status badges; plain mono for all data values.
