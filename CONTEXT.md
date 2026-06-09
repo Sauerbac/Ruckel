@@ -67,3 +67,8 @@ Use these terms exactly. Don't drift to synonyms.
 | [0024](docs/adr/0024-frontend-action-model-revision.md) | Frontend action model — rail-footer Convert, status-only bar, de-chipped meta line |
 | [0025](docs/adr/0025-append-on-drop-convert-time-collision-and-per-job-cancel.md) | Append-on-drop, convert-time collision check, per-job cancel |
 | [0026](docs/adr/0026-preflight-skips-invalid-candidates.md) | Pre-flight skips invalid candidates instead of aborting |
+| [0027](docs/adr/0027-ffmpeg-linked-in-process.md) | v2: FFmpeg linked in-process via libav\* API (rsmpeg) — supersedes 0004 |
+| [0028](docs/adr/0028-curated-decode-matrix.md) | v2: curated decode matrix as the input-support contract |
+| [0029](docs/adr/0029-self-built-minimal-static-ffmpeg.md) | v2: self-built minimal static FFmpeg, manifest-pinned — supersedes 0022 |
+| [0030](docs/adr/0030-single-file-artifact.md) | v2: bare `ruckel.exe` is the product artifact |
+| [0031](docs/adr/0031-in-process-transcode-runtime.md) | v2: in-process transcode runtime (thread, atomic cancel, PTS progress) |
