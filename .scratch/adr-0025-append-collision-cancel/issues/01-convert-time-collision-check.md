@@ -1,6 +1,6 @@
 # Convert-time collision check (replaces pre-flight collision detection)
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 

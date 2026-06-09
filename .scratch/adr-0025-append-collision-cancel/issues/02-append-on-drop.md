@@ -1,6 +1,6 @@
 # Append-on-drop + status-bar notice
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 

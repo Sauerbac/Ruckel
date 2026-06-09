@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-06-07
+- Clarified by: [ADR-0026](0026-preflight-skips-invalid-candidates.md)
+  (pre-flight skips invalid candidates per-file and surfaces the count as
+  `PreflightResult.skipped` — the implementation now conforms to this ADR)
 
 ## Context
 
@@ -10,8 +13,8 @@ detectable before encoding and those that surface during it.
 
 ## Decision
 
-- **Pre-flight errors** (audio-only, unreadable file): collected before encoding starts and
-  surfaced in the plan.
+- **Pre-flight errors** (audio-only, unreadable file): the candidate is skipped (never aborts
+  the drop) and the skipped count is surfaced rather than carried into the plan (ADR-0026).
 - **Encode errors:** skip the failed file, continue the batch.
 - **End-of-batch summary** reports every failure with its reason.
 

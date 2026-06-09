@@ -2,6 +2,12 @@
 
 - Status: Accepted
 - Date: 2026-06-07
+- Amended by: [ADR-0025](0025-append-on-drop-convert-time-collision-and-per-job-cancel.md)
+  (`PreflightResult.collisions` removed; `check_collisions` + `cancel_job` commands
+  and the `conversion:file_cancelled` event added) and
+  [ADR-0026](0026-preflight-skips-invalid-candidates.md)
+  (`PreflightResult` gains `skipped: u32`). The command/event tables below predate
+  both — see those ADRs for the current surface.
 
 ## Context
 
@@ -38,10 +44,12 @@ stream rather than monolithic handlers.
   the frontend can show size, duration + resolution after pre-flight without a second
   round-trip. `size_bytes` is filesystem metadata (not an ffprobe field) and is an `f64`
   so the generated TS stays a plain `number`. `ConversionJob` stays clean as the encoder
-  input.
-- `PreflightResult.collisions` lists each planned `<stem>_ppt.mp4` already on disk so the
-  frontend resolves them before encoding (Override / Rename / Cancel, ADR-0014); the
-  resolved plan round-trips back through `start_conversion`.
+  input. `PreflightResult` also carries `skipped: u32` — the count of scanned candidates
+  that failed to probe or had no video stream, skipped rather than aborted (ADR-0026).
+- `PreflightResult.collisions` *(removed by ADR-0025)* originally listed each planned
+  `<stem>_ppt.mp4` already on disk; collision detection moved out of pre-flight to the
+  convert-time `check_collisions` command. The three-way resolution (Override / Rename /
+  Cancel, ADR-0014) and the round-trip back through `start_conversion` are unchanged.
 - Events drive Svelte stores directly ([ADR-0002](0002-svelte-frontend.md)).
 - Under Tauri v2 ([ADR-0001](0001-tauri-v2-windows-desktop.md)), these use the v2 command/event
   APIs.

@@ -1,6 +1,6 @@
 # Frontend polish v2 — settings tooltips, layout stability, list affordances
 
-Status: ready-for-agent
+Status: complete
 
 Eight frontend refinements agreed in a grilling session. Durable rationale and
 the decision record live in **ADR-0023** (`docs/adr/0023-frontend-polish-v2.md`),
