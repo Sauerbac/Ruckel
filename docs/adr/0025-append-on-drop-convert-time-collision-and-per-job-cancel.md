@@ -104,14 +104,20 @@ mutates mid-batch and event routing stays valid:
 The ✕ is rendered in every phase (killing the end-of-batch layout shift) and its
 meaning is driven by context, self-documented via the existing `Tooltip`:
 
-| Context | Appearance | Tooltip |
+| Context | Appearance | Hint popover |
 |---|---|---|
-| Not converting | normal, danger-on-hover | "Remove" |
+| Not converting | normal, danger-on-hover | *none* — a bare ✕ outside a batch already reads as Remove (the `aria-label` still says "Remove …" for screen readers) |
 | Converting, row `ready` / `converting` | normal, danger-on-hover | "Cancel this job" |
 | Converting, row `done` / `error` / `cancelled` | inert/dimmed, `cursor-default` | "Can't remove while converting" |
 
 The inert variant is *styled* inert, **not** the native `disabled` attribute, so
-its hover tooltip still fires.
+its hover/focus handlers still fire. The hint is not the OS `title`: it is a flat
+popover styled like the info `Tooltip` (ink border, paper bg, mono, instant),
+rendered `position: fixed` and **portaled to `<body>`** because the file list's
+`mask-image` establishes a stacking context that would otherwise clip a fixed
+child. Hover/focus sit on the ✕ `<button>` itself, so the styled-inert state
+still triggers it. The popover fires **only mid-batch**, where the ✕'s meaning is
+non-obvious; the idle Remove ✕ shows none.
 
 The Done / Error / **Cancelled** badges gain explicit `h-[18px]` + `leading-none`
 + `items-center`, matching the ✕'s 18px so they share a baseline. The
@@ -125,9 +131,14 @@ Append removes the surface the drop error relied on (the empty-state drop zone n
 longer shows when a list is loaded). Rather than add toast infrastructure,
 `StatusBar` gains an optional `notice?: string | null` prop that **overrides** the
 status line for ~2.5s then auto-reverts (the derived `status` is the ground truth
-underneath). It is fired only for **"No convertible video found"** when a drop
-yields zero new files — a case that only occurs outside `converting`, so it never
-fights the live progress readout. Mid-convert ignored drops stay silent.
+underneath). It carries **drop-time feedback** on a drop into an already-loaded
+list: **"No convertible video found"** when the drop yields zero new files, and
+any **pre-flight error** — in both cases the empty-state drop zone (the old error
+surface) is no longer on screen once a list is loaded, so the alternative would be
+a silent failure. These cases only occur outside `converting`, so the notice never
+fights the live progress readout. Mid-convert ignored drops stay silent. On an
+empty-state drop (no list yet) the old drop-zone error text is still used, since
+there is no loaded list to host the notice.
 
 ## Consequences
 

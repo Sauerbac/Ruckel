@@ -259,6 +259,11 @@
   // --- Convert / collisions ----------------------------------------------
 
   async function onConvert() {
+    // Don't start while a drop is still probing or a modal is open (ADR-0025):
+    // an append probe leaves `phase` at ready/done with Convert live, and a
+    // batch begun mid-probe would have its `phase`/`rows` clobbered when the
+    // probe resolves (and the appended row would never be collision-checked).
+    if (busy || showCollisions) return
     // Collisions are checked fresh against disk at convert time (ADR-0025), so a
     // re-convert of a finished batch routes through the modal instead of
     // silently overwriting. The whole current batch is re-checked, so an
