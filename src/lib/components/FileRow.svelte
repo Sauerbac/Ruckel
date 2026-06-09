@@ -13,7 +13,12 @@
 -->
 <script lang="ts">
   import type { FileProbe } from '../ipc'
-  import { baseName, formatBytes, formatDuration, formatResolution } from '../format'
+  import {
+    baseName,
+    formatBytes,
+    formatDuration,
+    formatResolution,
+  } from '../format'
 
   export type FileRowPhase =
     | 'dropped'
@@ -30,6 +35,7 @@
     percent = 0,
     outputPath = null,
     errorMessage = null,
+    onRemove,
   }: {
     /** Source filename (basename) — shown in mono. */
     fileName: string
@@ -44,6 +50,8 @@
     outputPath?: string | null
     /** Failure reason for the `error` phase (ADR-0015). */
     errorMessage?: string | null
+    /** Remove this row from the batch (ADR-0023). Absent ⇒ no ✕ rendered. */
+    onRemove?: () => void
   } = $props()
 
   const ext = $derived(fileName.includes('.') ? fileName.split('.').pop()! : '')
@@ -52,38 +60,58 @@
 
 <div
   class="flex flex-col gap-2 border-[1.5px] p-3
-         {phase === 'error' ? 'border-ink border-l-[3px] border-l-danger' : 'border-ink'}"
+         {phase === 'error'
+    ? 'border-ink border-l-[3px] border-l-danger'
+    : 'border-ink'}"
 >
-  <!-- Name + extension + outcome badge. -->
+  <!-- Name + outcome badge + remove. (Format chip lives on the meta line.) -->
   <div class="flex items-center justify-between gap-3">
-    <span class="min-w-0 truncate font-mono text-[12px] text-ink">{fileName}</span>
+    <span class="min-w-0 truncate font-mono text-[12px] text-ink"
+      >{fileName}</span
+    >
     <span class="flex shrink-0 items-center gap-2">
-      {#if ext}
-        <span
-          class="border border-line px-1.5 py-px font-mono text-[10px]
-                 tracking-[0.08em] text-muted uppercase">{ext}</span
-        >
-      {/if}
       {#if phase === 'done'}
         <span
-          class="inline-flex items-center gap-[6px] border-[1.5px] border-ink
-                 bg-accent px-2 py-[3px] font-mono text-[10px] tracking-[0.08em]
-                 text-ink uppercase"
-          ><span class="h-[7px] w-[7px] bg-ink"></span>Done</span
+          class="inline-flex items-center gap-[5px] border border-ink bg-accent
+                 px-1.5 py-px font-mono text-[10px] tracking-[0.08em] text-ink
+                 uppercase"
+          ><span class="h-[6px] w-[6px] bg-ink"></span>Done</span
         >
       {:else if phase === 'error'}
         <span
-          class="inline-flex items-center gap-[6px] border-[1.5px] border-ink
-                 bg-danger px-2 py-[3px] font-mono text-[10px] tracking-[0.08em]
-                 text-paper uppercase"
-          ><span class="h-[7px] w-[7px] bg-paper"></span>Error</span
+          class="inline-flex items-center gap-[5px] border border-ink bg-danger
+                 px-1.5 py-px font-mono text-[10px] tracking-[0.08em] text-paper
+                 uppercase"
+          ><span class="h-[6px] w-[6px] bg-paper"></span>Error</span
+        >
+      {/if}
+      <!-- Remove (ADR-0023): persistent, subordinate; inverts to danger on
+           hover. Phase-gated — hidden mid-encode to keep rows 1:1 with the
+           plan's file_index. -->
+      {#if onRemove && phase !== 'converting'}
+        <button
+          type="button"
+          aria-label={`Remove ${fileName}`}
+          onclick={onRemove}
+          class="flex h-[18px] w-[18px] cursor-default items-center
+                 justify-center border border-line font-mono text-[10px]
+                 leading-none text-muted outline-none hover:border-danger
+                 hover:bg-danger hover:text-paper focus-visible:outline-2
+                 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+          >✕</button
         >
       {/if}
     </span>
   </div>
 
-  <!-- Meta line: size always; duration + resolution once probed (mono data). -->
+  <!-- Meta line: format chip + size always; duration + resolution once probed. -->
   <div class="flex items-center gap-2 font-mono text-[11px] text-muted">
+    {#if ext}
+      <span
+        class="border border-line px-1.5 py-px text-[10px] tracking-[0.08em]
+               uppercase">{ext}</span
+      >
+    {/if}
     <span>{formatBytes(sizeBytes)}</span>
     {#if probe}
       <span aria-hidden="true">·</span>

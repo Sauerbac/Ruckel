@@ -57,6 +57,7 @@ pub fn run() {
             commands::start_conversion,
             commands::cancel_conversion,
         ])
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

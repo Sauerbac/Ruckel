@@ -65,6 +65,16 @@
   --radius-brut: 0;
 }
 
+/* Scrollbar-hidden overflow (ADR-0023): the file list scrolls via wheel/
+   trackpad but shows no scrollbar — a mask-image fade is the overflow cue
+   instead. Cross-engine: Firefox `scrollbar-width`, WebKit/Chromium pseudo. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   html,
   body,

@@ -247,20 +247,28 @@
   <!-- F2 — feature components, every locked state from mock props.    -->
   <!-- ============================================================== -->
 
-  <!-- File row — the ADR-0020 phased reveal, one row per phase. -->
+  <!-- File row — the ADR-0020 phased reveal, one row per phase. The persistent
+       remove ✕ (ADR-0023) shows on every phase except converting, where it is
+       gated off; pass a no-op onRemove to surface it here. -->
   <section class="mb-10">
     <h2
       class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
     >
-      File row — phased reveal
+      File row — phased reveal · remove ✕
     </h2>
     <div class="flex max-w-md flex-col gap-3">
-      <FileRow fileName="lecture_03.mp4" sizeBytes={260_046_848} phase="dropped" />
+      <FileRow
+        fileName="lecture_03.mp4"
+        sizeBytes={260_046_848}
+        phase="dropped"
+        onRemove={() => {}}
+      />
       <FileRow
         fileName="lecture_03.mp4"
         sizeBytes={260_046_848}
         {probe}
         phase="ready"
+        onRemove={() => {}}
       />
       <FileRow
         fileName="lecture_03.mp4"
@@ -268,6 +276,7 @@
         {probe}
         phase="converting"
         percent={40}
+        onRemove={() => {}}
       />
       <FileRow
         fileName="lecture_03.mp4"
@@ -275,6 +284,7 @@
         {probe}
         phase="done"
         outputPath="C:\Users\Simon\Videos\lecture_03_ppt.mp4"
+        onRemove={() => {}}
       />
       <FileRow
         fileName="keynote_intro.mov"
@@ -282,6 +292,7 @@
         {probe}
         phase="error"
         errorMessage="ffmpeg exited 1: Unsupported codec (hevc) in stream 0"
+        onRemove={() => {}}
       />
     </div>
   </section>
@@ -324,7 +335,9 @@
     </h2>
     <div class="flex max-w-2xl flex-col gap-3">
       <StatusBar status={{ state: 'idle' }} />
-      <StatusBar status={{ state: 'ready', fileCount: 3, totalBytes: 580_911_104 }} />
+      <StatusBar
+        status={{ state: 'ready', fileCount: 3, totalBytes: 580_911_104 }}
+      />
       <StatusBar
         status={{ state: 'converting', percent: 62, elapsedSecs: 95 }}
       />

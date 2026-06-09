@@ -3,6 +3,7 @@
 // are the single source of truth, so nothing here is hand-duplicated.
 
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
@@ -63,6 +64,54 @@ export async function listenConversion(
     listen(CONVERSION_EVENTS.CANCELLED, () => handlers.onCancelled?.()),
   ])
   return () => unlisteners.forEach((un) => un())
+}
+
+/** Video container extensions offered by the browse dialog — mirrors
+ * `scanner.rs` `VIDEO_EXTENSIONS` (ADR-0011) so click-to-browse and drag-drop
+ * filter the same set. */
+const VIDEO_EXTENSIONS = [
+  'mp4',
+  'm4v',
+  'mov',
+  'mkv',
+  'webm',
+  'avi',
+  'wmv',
+  'flv',
+  'f4v',
+  'mpg',
+  'mpeg',
+  'm2v',
+  'mts',
+  'm2ts',
+  'ts',
+  '3gp',
+  '3g2',
+  'ogv',
+  'vob',
+  'asf',
+  'divx',
+  'dv',
+  'mxf',
+]
+
+/** Click-to-browse intake (ADR-0023). Opens a multi-select Open dialog filtered
+ * to the video extensions (plus All files for extensionless videos) and returns
+ * the chosen paths, which flow through the same pre-flight path as a drop. `[]`
+ * when cancelled or outside Tauri. Folders stay drag-only (native multi-select
+ * file dialogs can't also pick directories). */
+export async function openVideoDialog(): Promise<string[]> {
+  if (!inTauri) return []
+  const selected = await open({
+    multiple: true,
+    directory: false,
+    filters: [
+      { name: 'Video', extensions: VIDEO_EXTENSIONS },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  })
+  if (selected == null) return []
+  return Array.isArray(selected) ? selected : [selected]
 }
 
 /** OS file-drop onto the window (ADR-0020). Real paths arrive only via Tauri's

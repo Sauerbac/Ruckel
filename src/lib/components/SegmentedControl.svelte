@@ -20,7 +20,7 @@
 </script>
 
 <div
-  class="inline-flex border-[1.5px]
+  class="flex w-full border-[1.5px]
          {disabled ? 'border-line bg-fill' : 'border-ink bg-surface'}"
   role="group"
 >
@@ -30,7 +30,7 @@
       type="button"
       {disabled}
       onclick={() => (value = option.value)}
-      class="h-[26px] cursor-default border-line px-3 font-mono text-[12px]
+      class="h-[26px] flex-1 cursor-default border-line px-3 font-mono text-[12px]
              outline-none not-first:border-l focus-visible:outline-2
              focus-visible:-outline-offset-2 focus-visible:outline-accent
              {disabled

@@ -25,7 +25,9 @@
   import TitleBar from './TitleBar.svelte'
   import FileRow, { type FileRowPhase } from '../components/FileRow.svelte'
   import OptionsPanel from '../components/OptionsPanel.svelte'
-  import StatusBar, { type StatusBarStatus } from '../components/StatusBar.svelte'
+  import StatusBar, {
+    type StatusBarStatus,
+  } from '../components/StatusBar.svelte'
   import CollisionModal, {
     type CollisionChoice,
   } from '../components/CollisionModal.svelte'
@@ -42,6 +44,7 @@
     inTauri,
     listenConversion,
     listenFileDrop,
+    openVideoDialog,
     preflight,
     startConversion,
   } from '../ipc-client'
@@ -111,6 +114,39 @@
           : { state: 'idle' },
   )
 
+  // --- File-list fade (ADR-0023) ------------------------------------------
+  // The list hides its scrollbar; a mask-image gradient fades the top/bottom
+  // edges. Each edge's gradient stop drops at its extreme — no top fade at the
+  // top, no bottom fade at the bottom, neither when the list isn't scrollable.
+  let listEl = $state<HTMLDivElement | null>(null)
+  let fadeTop = $state(false)
+  let fadeBottom = $state(false)
+
+  function updateFade() {
+    const el = listEl
+    if (!el) return
+    fadeTop = el.scrollTop > 1
+    fadeBottom = el.scrollTop + el.clientHeight < el.scrollHeight - 1
+  }
+
+  // Re-measure whenever the list's layout-affecting state changes — row count,
+  // and each row's phase/error (both alter row height). Runs post-DOM.
+  $effect(() => {
+    void rows.length
+    for (const r of rows) {
+      void r.rowPhase
+      void r.errorMessage
+    }
+    if (listEl) updateFade()
+  })
+
+  const maskStyle = $derived.by(() => {
+    const top = fadeTop ? '24px' : '0'
+    const bottom = fadeBottom ? 'calc(100% - 24px)' : '100%'
+    const g = `linear-gradient(to bottom, transparent 0, #000 ${top}, #000 ${bottom}, transparent 100%)`
+    return `-webkit-mask-image: ${g}; mask-image: ${g};`
+  })
+
   // --- Pre-flight ---------------------------------------------------------
 
   async function handleDrop(paths: string[]) {
@@ -142,6 +178,14 @@
       phase = 'idle'
       dropError = String(e)
     }
+  }
+
+  /** Click-to-browse (ADR-0023): open the file dialog and feed any selection
+   *  through the same pre-flight path as a drop. No-op outside Tauri / mid-batch. */
+  async function browse() {
+    if (busy || showCollisions) return
+    const paths = await openVideoDialog()
+    if (paths.length > 0) handleDrop(paths)
   }
 
   // --- Convert / collisions ----------------------------------------------
@@ -249,6 +293,30 @@
     activeIndex = 0
   }
 
+  /** Remove a row from the batch (ADR-0023). Phase-gated to non-converting so
+   *  the encoder's `file_index` keeps pointing at the plan we sent. The last
+   *  row returning to the empty drop zone; removing while `done` recomputes the
+   *  status summary from the survivors. */
+  function removeRow(index: number) {
+    if (phase === 'converting') return
+    rows = rows.filter((_, i) => i !== index)
+    if (rows.length === 0) {
+      reset()
+      return
+    }
+    // Keep collisions aligned to row positions (job_index == row index): drop
+    // the removed row's entry and shift the rest down.
+    collisions = collisions
+      .filter((c) => c.job_index !== index)
+      .map((c) =>
+        c.job_index > index ? { ...c, job_index: c.job_index - 1 } : c,
+      )
+    if (phase === 'done') {
+      succeeded = rows.filter((r) => r.rowPhase === 'done').length
+      failed = rows.filter((r) => r.rowPhase === 'error').length
+    }
+  }
+
   function startTimer() {
     startedAt = Date.now()
     elapsedSecs = 0
@@ -336,44 +404,63 @@
     <!-- Left: drop target when empty, file list once files are loaded. -->
     <section class="flex min-w-0 flex-1 flex-col bg-surface p-3">
       {#if rows.length === 0}
-        <div
+        <!-- Empty state doubles as a click-to-browse button (ADR-0023): drag-drop
+             still works at the window level; folders stay drag-only. Block
+             children are spans so the markup stays valid inside <button>. -->
+        <button
+          type="button"
+          onclick={browse}
+          disabled={phase === 'reading'}
           class="flex flex-1 flex-col items-center justify-center gap-4 border-[1.5px]
-                 text-center {dropActive
+                 text-center outline-none focus-visible:outline-2
+                 focus-visible:-outline-offset-2 focus-visible:outline-accent
+                 disabled:cursor-default {dropActive
             ? 'border-solid border-accent bg-accent/5'
-            : 'border-dashed border-accent'}"
+            : 'cursor-pointer border-dashed border-accent hover:bg-accent/5'}"
         >
           <span
             class="flex h-11 w-11 items-center justify-center border-[1.5px]
                    border-accent font-mono text-xl leading-none text-accent"
             aria-hidden="true">↑</span
           >
-          <div class="px-4">
+          <span class="block px-4">
             {#if phase === 'reading'}
-              <p
-                class="font-mono text-[11px] font-medium tracking-[0.12em] text-ink
-                       uppercase"
+              <span
+                class="block font-mono text-[11px] font-medium tracking-[0.12em]
+                       text-ink uppercase"
               >
                 Reading…
-              </p>
-              <p class="mt-1.5 text-[12px] text-muted">Probing dropped files</p>
+              </span>
+              <span class="mt-1.5 block text-[12px] text-muted"
+                >Probing dropped files</span
+              >
             {:else}
-              <p
-                class="font-mono text-[11px] font-medium tracking-[0.12em] text-ink
-                       uppercase"
+              <span
+                class="block font-mono text-[11px] font-medium tracking-[0.12em]
+                       text-ink uppercase"
               >
                 Drop video or folder
-              </p>
-              <p class="mt-1.5 text-[12px] {dropError ? 'text-danger' : 'text-muted'}">
-                {dropError ?? 'Converts to PowerPoint-ready MP4'}
-              </p>
+              </span>
+              <span
+                class="mt-1.5 block text-[12px] {dropError
+                  ? 'text-danger'
+                  : 'text-muted'}"
+              >
+                {dropError ?? 'Click to browse, or drop a video or folder'}
+              </span>
             {/if}
-          </div>
-        </div>
+          </span>
+        </button>
       {:else}
         <!-- File list (ADR-0020). One row per candidate; the row owns its own
              phased reveal driven by the live event stream. -->
-        <div class="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto">
-          {#each rows as row (row.job.source_path)}
+        <div
+          bind:this={listEl}
+          onscroll={updateFade}
+          style={maskStyle}
+          class="scrollbar-none flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto"
+        >
+          {#each rows as row, i (row.job.source_path)}
             <FileRow
               fileName={row.fileName}
               sizeBytes={row.sizeBytes}
@@ -382,6 +469,7 @@
               percent={row.percent}
               outputPath={row.outputPath}
               errorMessage={row.errorMessage}
+              onRemove={phase === 'converting' ? undefined : () => removeRow(i)}
             />
           {/each}
         </div>
@@ -406,7 +494,7 @@
   <StatusBar
     {status}
     onConvert={phase === 'done' ? convertAgain : onConvert}
-    onCancel={onCancel}
+    {onCancel}
     onClear={reset}
   />
 

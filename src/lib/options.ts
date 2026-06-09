@@ -16,11 +16,13 @@ export const RESOLUTION_OPTIONS: Segment<Resolution>[] = [
   { label: 'ORIG', value: 'Original' },
 ]
 
-/** CRF is the raw 18–28 value (ADR-0007 surfaces three of the range). */
+/** CRF is the raw 18–28 value (ADR-0007 surfaces three of the range). Ordered
+ *  low→high quality left→right (28 = lowest, 18 = best) to match the other
+ *  groups, where the left segment is always the smallest/lowest (ADR-0023). */
 export const CRF_OPTIONS: Segment<number>[] = [
-  { label: '18', value: 18 },
-  { label: '23', value: 23 },
   { label: '28', value: 28 },
+  { label: '23', value: 23 },
+  { label: '18', value: 18 },
 ]
 
 export const FRAMERATE_OPTIONS: Segment<Framerate>[] = [
@@ -55,7 +57,12 @@ export const PRESETS: Record<PresetName, ConversionOptions> = {
     framerate: 'Original',
     audio: 'Kbps128',
   },
-  HIGH: { resolution: 'Original', crf: 18, framerate: 'Original', audio: 'Kbps192' },
+  HIGH: {
+    resolution: 'Original',
+    crf: 18,
+    framerate: 'Original',
+    audio: 'Kbps192',
+  },
   COMPACT: { resolution: 'P720', crf: 28, framerate: 'Fps30', audio: 'Kbps96' },
 }
 

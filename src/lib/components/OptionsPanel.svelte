@@ -23,6 +23,7 @@
     type PresetName,
   } from '../options'
   import SegmentedControl from './SegmentedControl.svelte'
+  import Tooltip from './Tooltip.svelte'
 
   let {
     options = $bindable(),
@@ -34,6 +35,64 @@
 
   const activePreset = $derived(presetFor(options))
 
+  // Per-group tooltip content (ADR-0023). Structured — heading + one-line gloss
+  // + an option→description table — so formatting carries the meaning and no dot
+  // separators are needed. Row order mirrors the segments left→right.
+  type Tip = {
+    heading: string
+    gloss: string
+    rows: { opt: string; desc: string }[]
+  }
+  const TIPS: Record<string, Tip> = {
+    preset: {
+      heading: 'Preset',
+      gloss: 'One-tap bundles — set all four knobs at once.',
+      rows: [
+        {
+          opt: 'PRESENTATION',
+          desc: 'balanced for slides (orig size, CRF 23)',
+        },
+        { opt: 'HIGH', desc: 'best quality, larger file (CRF 18)' },
+        { opt: 'COMPACT', desc: 'smallest file (720p, CRF 28, 30 fps)' },
+      ],
+    },
+    resolution: {
+      heading: 'Resolution',
+      gloss: 'Output frame height. Smaller = smaller file.',
+      rows: [
+        { opt: '480 / 720 / 1080', desc: 'downscale to that height' },
+        { opt: 'ORIG', desc: 'keep the source size' },
+      ],
+    },
+    quality: {
+      heading: 'Quality',
+      gloss: 'Compression level (CRF). Lower = sharper but larger.',
+      rows: [
+        { opt: '28', desc: 'small, softer' },
+        { opt: '23', desc: 'balanced' },
+        { opt: '18', desc: 'best quality, large file' },
+      ],
+    },
+    framerate: {
+      heading: 'Framerate',
+      gloss: 'Frames per second. Lower = smaller file.',
+      rows: [
+        { opt: '24 / 30 / 60', desc: 'cap the rate' },
+        { opt: 'ORIG', desc: 'keep the source' },
+      ],
+    },
+    audio: {
+      heading: 'Audio',
+      gloss: 'Audio bitrate.',
+      rows: [
+        { opt: '96K', desc: 'smallest' },
+        { opt: '128K', desc: 'standard' },
+        { opt: '192K', desc: 'best' },
+        { opt: 'NONE', desc: 'strip audio' },
+      ],
+    },
+  }
+
   function applyPreset(name: PresetName) {
     const p = PRESETS[name]
     options.resolution = p.resolution
@@ -43,14 +102,23 @@
   }
 </script>
 
+<!-- Group header: fixed-height row so the Custom badge / info icon appearing or
+     disappearing never reflows the panel (ADR-0023). LABEL [ⓘ] on the left. -->
+{#snippet header(label: string, tip: Tip)}
+  <span class="flex items-center gap-1.5">
+    <span class="font-mono text-[10px] tracking-[0.14em] text-muted uppercase"
+      >{label}</span
+    >
+    <Tooltip heading={tip.heading} gloss={tip.gloss} rows={tip.rows} />
+  </span>
+{/snippet}
+
 <div class="flex flex-col gap-5">
   <!-- Presets + Custom indicator. Hand-rolled (not SegmentedControl) because
        "Custom" means none selected — a state the segmented primitive can't hold. -->
   <div class="flex flex-col gap-2">
-    <div class="flex items-center justify-between">
-      <span class="font-mono text-[10px] tracking-[0.14em] text-muted uppercase"
-        >Preset</span
-      >
+    <div class="flex h-5 items-center justify-between">
+      {@render header('Preset', TIPS.preset)}
       {#if !disabled && activePreset === null}
         <span
           class="border border-line px-1.5 py-px font-mono text-[10px]
@@ -89,9 +157,9 @@
   </div>
 
   <div class="flex flex-col gap-2">
-    <span class="font-mono text-[10px] tracking-[0.14em] text-muted uppercase"
-      >Resolution</span
-    >
+    <div class="flex h-5 items-center">
+      {@render header('Resolution', TIPS.resolution)}
+    </div>
     <SegmentedControl
       bind:value={options.resolution}
       {disabled}
@@ -100,16 +168,20 @@
   </div>
 
   <div class="flex flex-col gap-2">
-    <span class="font-mono text-[10px] tracking-[0.14em] text-muted uppercase"
-      >Quality · CRF</span
-    >
-    <SegmentedControl bind:value={options.crf} {disabled} options={CRF_OPTIONS} />
+    <div class="flex h-5 items-center">
+      {@render header('Quality', TIPS.quality)}
+    </div>
+    <SegmentedControl
+      bind:value={options.crf}
+      {disabled}
+      options={CRF_OPTIONS}
+    />
   </div>
 
   <div class="flex flex-col gap-2">
-    <span class="font-mono text-[10px] tracking-[0.14em] text-muted uppercase"
-      >Framerate</span
-    >
+    <div class="flex h-5 items-center">
+      {@render header('Framerate', TIPS.framerate)}
+    </div>
     <SegmentedControl
       bind:value={options.framerate}
       {disabled}
@@ -118,9 +190,9 @@
   </div>
 
   <div class="flex flex-col gap-2">
-    <span class="font-mono text-[10px] tracking-[0.14em] text-muted uppercase"
-      >Audio</span
-    >
+    <div class="flex h-5 items-center">
+      {@render header('Audio', TIPS.audio)}
+    </div>
     <SegmentedControl
       bind:value={options.audio}
       {disabled}
