@@ -194,8 +194,13 @@
     {#if probe}
       <span aria-hidden="true">·</span>
       <span>{formatDuration(probe.duration_secs)}</span>
-      <span aria-hidden="true">·</span>
-      <span>{formatResolution(probe.width, probe.height)}</span>
+      <!-- A probe can report 0×0 when a video carries no coded dimensions
+           (probe.rs falls back to 0); omit the resolution segment entirely then,
+           separator and all, so the row never shows a literal 0×0 (ADR-0026 nit). -->
+      {#if probe.width > 0 && probe.height > 0}
+        <span aria-hidden="true">·</span>
+        <span>{formatResolution(probe.width, probe.height)}</span>
+      {/if}
     {/if}
   </div>
 

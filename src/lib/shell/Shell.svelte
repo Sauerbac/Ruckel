@@ -193,6 +193,12 @@
     reading = true
     try {
       const result = await preflight(paths)
+      // Pre-flight skips invalid candidates rather than aborting (ADR-0026);
+      // `skipped` is the count it discarded (no video stream / unreadable), which
+      // we can't derive frontend-side since a folder expands into candidates we
+      // never see. It lets us tell a "skipped, not video" drop apart from an
+      // all-duplicates drop below.
+      const skipped = result.skipped
       // Deduplicate by source_path — re-dropping a file is a no-op, so a done
       // row stays done with its badge.
       const known = rows.map((r) => r.job.source_path)
@@ -212,12 +218,18 @@
         })
       })
       if (additions.length === 0) {
-        // No convertible video, or every file is already loaded.
+        // Nothing new loaded — the drop-outcome notice matrix (ADR-0026).
         if (startingEmpty) {
+          // Empty-start with no valid files at all: the drop-zone text.
           phase = 'idle'
           dropError = 'No convertible video found'
+        } else if (skipped > 0) {
+          // Append: candidates were probed but none was a convertible video.
+          showNotice('No convertible video')
         } else {
-          showNotice('No convertible video found')
+          // Append: every dropped file was already loaded (our own dedup) —
+          // correcting the old "No convertible video found" lie (ADR-0026).
+          showNotice('Already added')
         }
         return
       }
@@ -225,6 +237,9 @@
       // done/error/cancelled rows keep their badges until the next Convert.
       rows = [...rows, ...additions]
       phase = 'ready'
+      // Some files loaded, but a stray non-video / unreadable was skipped —
+      // surface the aggregate count (ADR-0026), fired on empty-start too.
+      if (skipped > 0) showNotice(`${skipped} skipped (not video)`)
     } catch (e) {
       if (startingEmpty) {
         phase = 'idle'

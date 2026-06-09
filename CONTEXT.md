@@ -23,13 +23,13 @@ Use these terms exactly. Don't drift to synonyms.
 | **`_ppt` output** | The converted MP4. Always named `<source-stem>_ppt.mp4`, written in the source file's own folder. The naming contract is fixed — see [ADR-0008](docs/adr/0008-output-location-and-naming.md). |
 | **PowerPoint-safe flags** | The non-negotiable encode flags every output carries: `-c:v libx264 -profile:v high -pix_fmt yuv420p -movflags +faststart -c:a aac`. No hardcoded `-level`. See [ADR-0006](docs/adr/0006-powerpoint-safe-output-encoding.md). |
 | **Sidecar** | A standalone executable (`ffmpeg.exe`, `ffprobe.exe`) bundled with the app and spawned as a child process via `std::process::Command`. Not linked into the app. See [ADR-0004](docs/adr/0004-ffmpeg-sidecar-not-ffi.md). |
-| **Pre-flight** | The phase that runs all fast checks (scan, filter, probe, collision detection) *before* any encoding, producing a fully-resolved Conversion Plan. See [ADR-0010](docs/adr/0010-preflight-encode-separation.md). |
+| **Pre-flight** | The phase that runs the fast checks (scan, filter, probe) *before* any encoding, producing a fully-resolved Conversion Plan. A candidate that fails to probe or has no video stream is skipped, not aborted (ADR-0026); collision detection is *not* here — it runs fresh at convert time (ADR-0025). See [ADR-0010](docs/adr/0010-preflight-encode-separation.md). |
 | **Probe** | An invocation of `ffprobe` to read a file's duration and confirm a video stream is present. |
 | **Conversion Plan** | The fully-resolved batch the encoder executes blindly: an ordered list of Conversion Jobs. Output of pre-flight. |
 | **Conversion Job** | One resolved unit of work: source path, output path, and the four user options applied. |
 | **Encoder** | The component that takes a Conversion Plan and runs FFmpeg per job, emitting progress events. Does no decision-making. |
 | **Flat walk** | Folder scanning that includes only the immediate files in the dropped folder — no subdirectory recursion. See [ADR-0009](docs/adr/0009-processing-model.md). |
-| **Collision** | A planned `_ppt` output path that already exists on disk. Resolved in pre-flight only. See [ADR-0014](docs/adr/0014-collision-resolution.md). |
+| **Collision** | A planned `_ppt` output path that already exists on disk. Detected fresh at convert time via `check_collisions`, not in pre-flight (ADR-0025). See [ADR-0014](docs/adr/0014-collision-resolution.md). |
 | **Override / Rename / Cancel** | The three per-file collision resolutions: overwrite the existing file / write to a user-supplied name / skip this file and continue the batch. |
 | **Faststart** | The `+faststart` muxer flag that moves MP4 metadata (moov atom) to the front, so PowerPoint loads the video instantly instead of after a full scan. |
 | **The four options** | The only user-facing encode knobs: Resolution, Quality (CRF), Framerate cap, Audio bitrate. See [ADR-0007](docs/adr/0007-user-options-and-presets.md). |
@@ -54,7 +54,7 @@ Use these terms exactly. Don't drift to synonyms.
 | [0011](docs/adr/0011-file-type-filtering.md) | File-type filtering |
 | [0012](docs/adr/0012-output-safety-temp-and-rename.md) | Output safety: temp file + atomic rename |
 | [0013](docs/adr/0013-encoder-process-control.md) | Encoder process control: progress + cancellation |
-| [0014](docs/adr/0014-collision-resolution.md) | Collision resolution in pre-flight |
+| [0014](docs/adr/0014-collision-resolution.md) | Collision resolution (convert-time since ADR-0025) |
 | [0015](docs/adr/0015-error-handling.md) | Error handling: skip-and-continue + summary |
 | [0016](docs/adr/0016-tauri-command-and-event-contract.md) | Tauri command surface and event contract |
 | [0017](docs/adr/0017-rust-module-structure.md) | Rust module structure |
@@ -65,3 +65,5 @@ Use these terms exactly. Don't drift to synonyms.
 | [0022](docs/adr/0022-ffmpeg-fetched-into-binaries.md) | FFmpeg fetched into binaries |
 | [0023](docs/adr/0023-frontend-polish-v2.md) | Frontend polish v2 — tooltips, layout stability, list & row affordances |
 | [0024](docs/adr/0024-frontend-action-model-revision.md) | Frontend action model — rail-footer Convert, status-only bar, de-chipped meta line |
+| [0025](docs/adr/0025-append-on-drop-convert-time-collision-and-per-job-cancel.md) | Append-on-drop, convert-time collision check, per-job cancel |
+| [0026](docs/adr/0026-preflight-skips-invalid-candidates.md) | Pre-flight skips invalid candidates instead of aborting |

@@ -1,6 +1,6 @@
 # Per-job cancel + `'cancelled'` phase + always-rendered context-aware ✕
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
