@@ -10,5 +10,11 @@ import type { FileProbe } from "./FileProbe";
  * Collision detection no longer lives here (ADR-0025): whether a planned output
  * already exists is checked fresh at convert time via `check_collisions`, not
  * cached at drop time where it goes stale the instant the batch writes outputs.
+ *
+ * `skipped` is the count of scanned candidates that pre-flight discarded —
+ * no video stream or unreadable (ADR-0026). One stray file no longer aborts the
+ * whole drop; the good files still become jobs. The frontend can't derive this
+ * (it drops *paths*, but a folder expands into candidates it never sees), so the
+ * backend reports it: `skipped == scanned candidates − plan.len()`.
  */
-export type PreflightResult = { plan: Array<ConversionJob>, files: Array<FileProbe>, };
+export type PreflightResult = { plan: Array<ConversionJob>, files: Array<FileProbe>, skipped: number, };

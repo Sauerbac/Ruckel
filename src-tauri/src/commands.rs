@@ -40,31 +40,51 @@ pub struct EncoderState {
 /// `start_conversion` (I2).
 #[tauri::command]
 pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
+    Ok(build_preflight(scanner::scan(paths), probe::probe))
+}
+
+/// Resolve scanned candidates into a plan, skipping every invalid one (ADR-0026).
+///
+/// A candidate is kept only if it probes `Ok` *and* carries a video stream;
+/// everything else — no video stream, or any of probe's four failure modes
+/// (won't spawn / non-zero exit / malformed JSON) — is skipped and counted. The
+/// failure modes are treated identically (no per-reason branching): to the user
+/// they all mean "not a usable video, skip it". One stray file in a folder drop
+/// therefore no longer discards the good files alongside it, finally conforming
+/// to ADR-0015 (pre-flight errors are skip-and-surface, never abort).
+///
+/// `probe` is injected so the loop's skip/keep logic is unit-testable without
+/// spawning the ffprobe sidecar.
+fn build_preflight<P>(candidates: Vec<std::path::PathBuf>, probe: P) -> PreflightResult
+where
+    P: Fn(&Path) -> Result<probe::ProbeResult, String>,
+{
     let mut plan: Vec<ConversionJob> = Vec::new();
     let mut files: Vec<FileProbe> = Vec::new();
+    let mut skipped = 0u32;
 
-    for source in scanner::scan(paths) {
-        let probed = probe::probe(&source)?;
-        if !probed.has_video {
-            // Pre-flight error (ADR-0015): no video stream to convert.
-            return Err(format!("{}: no video stream found", source.display()));
+    for source in candidates {
+        match probe(&source) {
+            Ok(probed) if probed.has_video => {
+                let output = output_path_for(&source);
+                plan.push(ConversionJob {
+                    source_path: source.to_string_lossy().into_owned(),
+                    output_path: output.to_string_lossy().into_owned(),
+                    options: ConversionOptions::PRESENTATION,
+                });
+                files.push(FileProbe {
+                    duration_secs: probed.duration_secs,
+                    width: probed.width,
+                    height: probed.height,
+                    size_bytes: std::fs::metadata(&source).map(|m| m.len() as f64).unwrap_or(0.0),
+                });
+            }
+            // No video stream, or unreadable — skip and count (ADR-0026).
+            _ => skipped += 1,
         }
-
-        let output = output_path_for(&source);
-        plan.push(ConversionJob {
-            source_path: source.to_string_lossy().into_owned(),
-            output_path: output.to_string_lossy().into_owned(),
-            options: ConversionOptions::PRESENTATION,
-        });
-        files.push(FileProbe {
-            duration_secs: probed.duration_secs,
-            width: probed.width,
-            height: probed.height,
-            size_bytes: std::fs::metadata(&source).map(|m| m.len() as f64).unwrap_or(0.0),
-        });
     }
 
-    Ok(PreflightResult { plan, files })
+    PreflightResult { plan, files, skipped }
 }
 
 /// `check_collisions` (ADR-0016, ADR-0025): the single, authoritative collision
@@ -233,4 +253,67 @@ fn file_name_of(path: &str) -> String {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn video() -> probe::ProbeResult {
+        probe::ProbeResult { duration_secs: 5.0, has_video: true, width: 1920, height: 1080 }
+    }
+    fn audio_only() -> probe::ProbeResult {
+        probe::ProbeResult { duration_secs: 5.0, has_video: false, width: 0, height: 0 }
+    }
+
+    #[test]
+    fn keeps_every_valid_candidate_with_zero_skipped() {
+        let candidates = vec![PathBuf::from("a.mp4"), PathBuf::from("b.mov")];
+        let result = build_preflight(candidates, |_| Ok(video()));
+        assert_eq!(result.plan.len(), 2);
+        assert_eq!(result.files.len(), 2);
+        assert_eq!(result.skipped, 0);
+    }
+
+    #[test]
+    fn skips_non_video_candidate_but_keeps_the_good_one() {
+        // A real clip alongside an audio-only / renamed file (ADR-0026): the clip
+        // is kept, the other is skipped — the drop is not discarded.
+        let candidates = vec![PathBuf::from("clip.mp4"), PathBuf::from("song.mp3")];
+        let result = build_preflight(candidates, |p| {
+            if p.extension().and_then(|e| e.to_str()) == Some("mp4") {
+                Ok(video())
+            } else {
+                Ok(audio_only())
+            }
+        });
+        assert_eq!(result.plan.len(), 1);
+        assert!(result.plan[0].source_path.ends_with("clip.mp4"));
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    fn skips_unreadable_candidate_instead_of_aborting() {
+        // A probe Err (won't spawn / non-zero exit / malformed JSON) is skipped,
+        // not propagated — one corrupt file no longer kills the whole drop.
+        let candidates = vec![PathBuf::from("good.mp4"), PathBuf::from("corrupt.mp4")];
+        let result = build_preflight(candidates, |p| {
+            if p.file_name().and_then(|n| n.to_str()) == Some("corrupt.mp4") {
+                Err("ffprobe failed".into())
+            } else {
+                Ok(video())
+            }
+        });
+        assert_eq!(result.plan.len(), 1);
+        assert_eq!(result.skipped, 1);
+    }
+
+    #[test]
+    fn an_all_invalid_drop_yields_an_empty_plan_not_an_error() {
+        let candidates = vec![PathBuf::from("x.bin"), PathBuf::from("y.bin")];
+        let result = build_preflight(candidates, |_| Err("unreadable".into()));
+        assert!(result.plan.is_empty());
+        assert_eq!(result.skipped, 2);
+    }
 }
