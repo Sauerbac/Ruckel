@@ -5,11 +5,11 @@ use std::path::Path;
 
 use tauri::{AppHandle, Emitter, State};
 
-use crate::encoder::cancel::CancelToken;
+use crate::encoder::cancel::{CancelToken, CancelledJobs};
 use crate::encoder::runner::{self, EncodeError};
 use crate::encoder::{
-    events, CancelledEvent, ConversionError, DoneEvent, FileDoneEvent, FileErrorEvent,
-    ProgressEvent,
+    events, CancelledEvent, ConversionError, DoneEvent, FileCancelledEvent, FileDoneEvent,
+    FileErrorEvent, ProgressEvent,
 };
 use crate::preflight::collision::{output_path_for, Collision};
 use crate::preflight::plan::{ConversionJob, ConversionOptions};
@@ -17,27 +17,31 @@ use crate::preflight::scanner;
 use crate::preflight::{FileProbe, PreflightResult};
 use crate::probe;
 
-/// App-wide encoder state held in Tauri's managed-state registry: the shared
-/// cancellation flag the `cancel_conversion` command trips (ADR-0013).
+/// App-wide encoder state held in Tauri's managed-state registry: the
+/// whole-batch abort flag the `cancel_conversion` command trips (ADR-0013) and
+/// the per-job cancel set the `cancel_job` command writes (ADR-0025). Both are
+/// reset at the start of each batch.
 #[derive(Default)]
 pub struct EncoderState {
     pub cancel: CancelToken,
+    pub cancelled: CancelledJobs,
 }
 
 /// `preflight` (ADR-0016): resolve dropped paths into a Conversion Plan.
 ///
 /// Dropped paths are scanned into candidate files — folders walked flat,
 /// extension-filtered (B3, ADR-0009/0011) — then each candidate is probed for a
-/// video stream and turned into a job. Each planned `<stem>_ppt.mp4` is checked
-/// against disk; any that already exists is reported as a collision (I3,
-/// ADR-0014) for the frontend to resolve before encoding. Every job starts on
-/// the Presentation default; the frontend overrides `options` from the chosen
-/// preset/controls before `start_conversion` (I2).
+/// video stream and turned into a job whose planned `<stem>_ppt.mp4` output is
+/// computed (ADR-0008). Disk collision detection is *not* done here (ADR-0025):
+/// it is checked fresh at convert time via `check_collisions`, since whether an
+/// output exists only matters when encoding starts and goes stale once a batch
+/// writes its outputs. Every job starts on the Presentation default; the
+/// frontend overrides `options` from the chosen preset/controls before
+/// `start_conversion` (I2).
 #[tauri::command]
 pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
     let mut plan: Vec<ConversionJob> = Vec::new();
     let mut files: Vec<FileProbe> = Vec::new();
-    let mut collisions: Vec<Collision> = Vec::new();
 
     for source in scanner::scan(paths) {
         let probed = probe::probe(&source)?;
@@ -47,17 +51,6 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
         }
 
         let output = output_path_for(&source);
-        let job_index = plan.len() as u32;
-        // Collision detection (ADR-0014): an existing planned output is surfaced
-        // now so the user resolves it before any encode runs.
-        if output.exists() {
-            collisions.push(Collision {
-                job_index,
-                source_path: source.to_string_lossy().into_owned(),
-                output_path: output.to_string_lossy().into_owned(),
-            });
-        }
-
         plan.push(ConversionJob {
             source_path: source.to_string_lossy().into_owned(),
             output_path: output.to_string_lossy().into_owned(),
@@ -71,11 +64,26 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
         });
     }
 
-    Ok(PreflightResult {
-        plan,
-        files,
-        collisions,
-    })
+    Ok(PreflightResult { plan, files })
+}
+
+/// `check_collisions` (ADR-0016, ADR-0025): the single, authoritative collision
+/// source. Tests each job's already-computed `output_path` against disk with no
+/// re-probe, returning one [`Collision`] per planned output that already exists.
+/// Run fresh on every Convert so re-converting a finished batch routes through
+/// the modal instead of silently overwriting (ADR-0008, ADR-0014). The returned
+/// `job_index` aligns to the job's position in the plan passed in.
+#[tauri::command]
+pub fn check_collisions(plan: Vec<ConversionJob>) -> Vec<Collision> {
+    plan.iter()
+        .enumerate()
+        .filter(|(_, job)| Path::new(&job.output_path).exists())
+        .map(|(index, job)| Collision {
+            job_index: index as u32,
+            source_path: job.source_path.clone(),
+            output_path: job.output_path.clone(),
+        })
+        .collect()
 }
 
 /// `start_conversion` (ADR-0016): run the plan, reporting progress via events.
@@ -87,22 +95,41 @@ pub async fn start_conversion(
     plan: Vec<ConversionJob>,
 ) -> Result<(), String> {
     let cancel = state.cancel.clone();
+    let cancelled = state.cancelled.clone();
+    // Both cancellation mechanisms reset for the fresh batch (ADR-0025).
     cancel.reset();
-    std::thread::spawn(move || run_batch(&app, &plan, &cancel));
+    cancelled.reset();
+    std::thread::spawn(move || run_batch(&app, &plan, &cancel, &cancelled));
     Ok(())
 }
 
-/// `cancel_conversion` (ADR-0016): trip the shared flag; the encode thread
+/// `cancel_conversion` (ADR-0016): trip the whole-batch flag; the encode thread
 /// kills FFmpeg and cleans up at its next progress read (ADR-0013).
 #[tauri::command]
 pub fn cancel_conversion(state: State<'_, EncoderState>) {
     state.cancel.cancel();
 }
 
+/// `cancel_job` (ADR-0025): mark a single job (by its `file_index`) for
+/// cancellation without aborting the batch. The runner skips it if still queued,
+/// or kills FFmpeg and continues if it is the active job — emitting
+/// `conversion:file_cancelled` either way.
+#[tauri::command]
+pub fn cancel_job(state: State<'_, EncoderState>, file_index: u32) {
+    state.cancelled.cancel(file_index);
+}
+
 /// Run every job sequentially (ADR-0009), emitting the contract events. A
 /// failed file is skipped and reported in the end-of-batch summary (ADR-0015);
-/// a cancel stops the batch and emits `conversion:cancelled` (ADR-0013).
-fn run_batch(app: &AppHandle, plan: &[ConversionJob], cancel: &CancelToken) {
+/// a whole-batch cancel stops the batch and emits `conversion:cancelled`
+/// (ADR-0013), while a per-job cancel skips just that job, emits
+/// `conversion:file_cancelled`, and continues (ADR-0025).
+fn run_batch(
+    app: &AppHandle,
+    plan: &[ConversionJob],
+    cancel: &CancelToken,
+    cancelled: &CancelledJobs,
+) {
     let total = plan.len() as u32;
     let mut succeeded = 0u32;
     let mut failed = 0u32;
@@ -113,6 +140,14 @@ fn run_batch(app: &AppHandle, plan: &[ConversionJob], cancel: &CancelToken) {
             break;
         }
         let file_index = index as u32;
+
+        // Per-job cancel of a still-queued job: skip it without ever spawning
+        // FFmpeg, and report it (ADR-0025). The batch carries on.
+        if cancelled.contains(file_index) {
+            let _ = app.emit(events::FILE_CANCELLED, FileCancelledEvent { file_index });
+            continue;
+        }
+
         let file_name = file_name_of(&job.source_path);
 
         // Duration drives the real percentage (ADR-0013); re-probed here rather
@@ -121,7 +156,10 @@ fn run_batch(app: &AppHandle, plan: &[ConversionJob], cancel: &CancelToken) {
             .map(|p| p.duration_secs)
             .unwrap_or(0.0);
 
-        let result = runner::encode(job, duration, cancel, |update| {
+        // Stop this job on either the whole-batch abort or its own per-job
+        // cancel (ADR-0025); the runner doesn't care which.
+        let should_cancel = || cancel.is_cancelled() || cancelled.contains(file_index);
+        let result = runner::encode(job, duration, &should_cancel, |update| {
             let _ = app.emit(
                 events::PROGRESS,
                 ProgressEvent {
@@ -147,8 +185,14 @@ fn run_batch(app: &AppHandle, plan: &[ConversionJob], cancel: &CancelToken) {
                 );
             }
             Err(EncodeError::Cancelled) => {
-                let _ = app.emit(events::CANCELLED, CancelledEvent {});
-                return;
+                // Whole-batch abort wins and stops everything; otherwise this was
+                // a per-job cancel of the active job — report it and continue.
+                if cancel.is_cancelled() {
+                    let _ = app.emit(events::CANCELLED, CancelledEvent {});
+                    return;
+                }
+                let _ = app.emit(events::FILE_CANCELLED, FileCancelledEvent { file_index });
+                continue;
             }
             Err(EncodeError::Failed(message)) => {
                 failed += 1;

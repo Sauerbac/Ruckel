@@ -10,7 +10,6 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use ruckel_lib::encoder::cancel::CancelToken;
 use ruckel_lib::encoder::runner;
 use ruckel_lib::preflight::collision::output_path_for;
 use ruckel_lib::preflight::plan::{ConversionJob, ConversionOptions};
@@ -135,7 +134,7 @@ fn encode_produces_valid_powerpoint_safe_ppt_mp4() {
 
     // Capture progress so we prove the percentage path runs end-to-end.
     let updates = RefCell::new(Vec::<f64>::new());
-    let written = runner::encode(&job, probed.duration_secs, &CancelToken::new(), |u| {
+    let written = runner::encode(&job, probed.duration_secs, &|| false, |u| {
         updates.borrow_mut().push(u.percent);
     })
     .expect("encode should succeed");
@@ -189,11 +188,9 @@ fn cancel_leaves_no_output_file() {
         options: ConversionOptions::PRESENTATION,
     };
 
-    // Pre-tripped token: the encode bails at its first progress read and must
-    // clean up its partial output (ADR-0012, ADR-0013).
-    let token = CancelToken::new();
-    token.cancel();
-    let result = runner::encode(&job, 2.0, &token, |_| {});
+    // Always-true predicate: the encode bails at its first progress read and
+    // must clean up its partial output (ADR-0012, ADR-0013).
+    let result = runner::encode(&job, 2.0, &|| true, |_| {});
 
     assert!(result.is_err(), "a cancelled encode should not succeed");
     assert!(!output.exists(), "cancel must leave no _ppt.mp4");

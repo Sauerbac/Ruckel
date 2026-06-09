@@ -49,6 +49,8 @@
   } from '../ipc'
   import {
     cancelConversion,
+    cancelJob as cancelJobCmd,
+    checkCollisions,
     inTauri,
     listenConversion,
     listenFileDrop,
@@ -77,10 +79,21 @@
   let dropActive = $state(false)
   let dropError = $state<string | null>(null)
 
+  // A drop is probing (pre-flight). Tracked apart from `phase` because an append
+  // probe leaves the loaded list (and its phase) on screen (ADR-0025); only an
+  // empty-state drop flips `phase` to 'reading' for the drop-zone spinner.
+  let reading = $state(false)
+
+  // Transient status-bar override (ADR-0025): a ~2.5s notice that supplants the
+  // derived status line, then auto-reverts. Fired when a drop yields no new file.
+  let notice = $state<string | null>(null)
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null
+
   // The batch's shared options (ADR-0007); applied to every job at convert.
   let options = $state<ConversionOptions>({ ...PRESETS.PRESENTATION })
 
-  // Collisions detected in pre-flight, surfaced through the modal on Convert.
+  // Collisions detected fresh at convert time (ADR-0025), surfaced through the
+  // modal before any encode runs.
   let collisions = $state<Collision[]>([])
   let showCollisions = $state(false)
 
@@ -92,18 +105,27 @@
   let startedAt = 0
   let timer: ReturnType<typeof setInterval> | null = null
 
-  const busy = $derived(phase === 'reading' || phase === 'converting')
+  const busy = $derived(reading || phase === 'converting')
   const totalBytes = $derived(rows.reduce((sum, r) => sum + r.sizeBytes, 0))
 
-  /** Overall batch progress (ADR-0020): finished files count as full, the
-   *  active one by its live percent, queued as zero. */
+  // Cancelled rows, derived from row phases (ADR-0025) — the frontend's truth,
+  // since the backend's done summary counts only succeeded/failed.
+  const cancelledCount = $derived(
+    rows.filter((r) => r.rowPhase === 'cancelled').length,
+  )
+
+  /** Overall batch progress (ADR-0020): settled files (done / error /
+   *  cancelled) count as full, the active one by its live percent, queued as
+   *  zero. */
   const overallPercent = $derived(
     rows.length === 0
       ? 0
       : rows.reduce(
           (sum, r) =>
             sum +
-            (r.rowPhase === 'done' || r.rowPhase === 'error'
+            (r.rowPhase === 'done' ||
+            r.rowPhase === 'error' ||
+            r.rowPhase === 'cancelled'
               ? 100
               : r.rowPhase === 'converting'
                 ? r.percent
@@ -116,7 +138,7 @@
     phase === 'converting'
       ? { state: 'converting', percent: overallPercent, elapsedSecs }
       : phase === 'done'
-        ? { state: 'done', succeeded, failed }
+        ? { state: 'done', succeeded, failed, cancelled: cancelledCount }
         : phase === 'ready'
           ? { state: 'ready', fileCount: rows.length, totalBytes }
           : { state: 'idle' },
@@ -159,33 +181,71 @@
 
   async function handleDrop(paths: string[]) {
     if (busy || showCollisions) return // ignore drops mid-batch / mid-modal
-    dropError = null
-    rows = []
-    collisions = []
-    phase = 'reading'
+    // Append-on-drop (ADR-0025): a drop merges into the current batch; the list
+    // only ever grows here and is trimmed elsewhere by removing rows. An empty
+    // start flips `phase` to 'reading' for the drop-zone spinner; an append
+    // leaves the loaded list on screen and uses `reading` for the busy guard.
+    const startingEmpty = rows.length === 0
+    if (startingEmpty) {
+      dropError = null
+      phase = 'reading'
+    }
+    reading = true
     try {
       const result = await preflight(paths)
-      if (result.plan.length === 0) {
-        phase = 'idle'
-        dropError = 'No convertible video found'
+      // Deduplicate by source_path — re-dropping a file is a no-op, so a done
+      // row stays done with its badge.
+      const known = rows.map((r) => r.job.source_path)
+      const additions: Row[] = []
+      result.plan.forEach((job, i) => {
+        if (known.includes(job.source_path)) return
+        known.push(job.source_path)
+        additions.push({
+          job,
+          fileName: baseName(job.source_path),
+          sizeBytes: result.files[i]?.size_bytes ?? 0,
+          probe: result.files[i],
+          rowPhase: 'ready' as FileRowPhase,
+          percent: 0,
+          outputPath: null,
+          errorMessage: null,
+        })
+      })
+      if (additions.length === 0) {
+        // No convertible video, or every file is already loaded.
+        if (startingEmpty) {
+          phase = 'idle'
+          dropError = 'No convertible video found'
+        } else {
+          showNotice('No convertible video found')
+        }
         return
       }
-      rows = result.plan.map((job, i) => ({
-        job,
-        fileName: baseName(job.source_path),
-        sizeBytes: result.files[i]?.size_bytes ?? 0,
-        probe: result.files[i],
-        rowPhase: 'ready' as FileRowPhase,
-        percent: 0,
-        outputPath: null,
-        errorMessage: null,
-      }))
-      collisions = result.collisions
+      // Dropping into a finished batch returns the phase to ready; existing
+      // done/error/cancelled rows keep their badges until the next Convert.
+      rows = [...rows, ...additions]
       phase = 'ready'
     } catch (e) {
-      phase = 'idle'
-      dropError = String(e)
+      if (startingEmpty) {
+        phase = 'idle'
+        dropError = String(e)
+      } else {
+        showNotice(String(e))
+      }
+    } finally {
+      reading = false
     }
+  }
+
+  /** Show a transient status-bar notice (~2.5s) that overrides the derived
+   *  status line, then auto-reverts (ADR-0025). */
+  function showNotice(message: string) {
+    notice = message
+    if (noticeTimer) clearTimeout(noticeTimer)
+    noticeTimer = setTimeout(() => {
+      notice = null
+      noticeTimer = null
+    }, 2500)
   }
 
   /** Click-to-browse (ADR-0023): open the file dialog and feed any selection
@@ -198,12 +258,23 @@
 
   // --- Convert / collisions ----------------------------------------------
 
-  function onConvert() {
-    // Collisions block the encode until resolved in pre-flight (ADR-0014).
-    if (collisions.length > 0) {
+  async function onConvert() {
+    // Don't start while a drop is still probing or a modal is open (ADR-0025):
+    // an append probe leaves `phase` at ready/done with Convert live, and a
+    // batch begun mid-probe would have its `phase`/`rows` clobbered when the
+    // probe resolves (and the appended row would never be collision-checked).
+    if (busy || showCollisions) return
+    // Collisions are checked fresh against disk at convert time (ADR-0025), so a
+    // re-convert of a finished batch routes through the modal instead of
+    // silently overwriting. The whole current batch is re-checked, so an
+    // appended batch is covered for free (job_index aligns to row index).
+    const found = await checkCollisions(rows.map((r) => r.job))
+    if (found.length > 0) {
+      collisions = found
       showCollisions = true
       return
     }
+    collisions = []
     beginBatch(rows)
   }
 
@@ -285,6 +356,19 @@
     cancelConversion() // the encoder kills FFmpeg; we transition on `cancelled`
   }
 
+  /** Cancel a single job mid-batch (ADR-0025). Marks the row 'cancelled'
+   *  optimistically — a queued cancel shows instantly — then asks the backend;
+   *  the `file_cancelled` event is confirmation. Cancelled rows are kept in
+   *  place (never removed) so the encoder's file_index routing stays valid, and
+   *  re-run on the next Convert (beginBatch resets every row to ready). */
+  function cancelJob(index: number) {
+    const r = rows[index]
+    if (!r || (r.rowPhase !== 'ready' && r.rowPhase !== 'converting')) return
+    r.rowPhase = 'cancelled'
+    r.percent = 0
+    cancelJobCmd(index)
+  }
+
   function reset() {
     stopTimer()
     phase = 'idle'
@@ -308,13 +392,6 @@
       reset()
       return
     }
-    // Keep collisions aligned to row positions (job_index == row index): drop
-    // the removed row's entry and shift the rest down.
-    collisions = collisions
-      .filter((c) => c.job_index !== index)
-      .map((c) =>
-        c.job_index > index ? { ...c, job_index: c.job_index - 1 } : c,
-      )
     if (phase === 'done') {
       succeeded = rows.filter((r) => r.rowPhase === 'done').length
       failed = rows.filter((r) => r.rowPhase === 'error').length
@@ -352,7 +429,9 @@
         if (phase !== 'converting') return
         activeIndex = e.file_index
         const r = rows[e.file_index]
-        if (r) {
+        // A row cancelled mid-flight stays cancelled — ignore late progress for
+        // it (ADR-0025).
+        if (r && r.rowPhase !== 'cancelled') {
           r.rowPhase = 'converting'
           r.percent = e.percent
         }
@@ -372,6 +451,15 @@
           r.errorMessage = e.error_message
         }
       },
+      onFileCancelled: (e) => {
+        // Confirmation of a per-job cancel (ADR-0025); idempotent with the
+        // optimistic mark in cancelJob.
+        const r = rows[e.file_index]
+        if (r) {
+          r.rowPhase = 'cancelled'
+          r.percent = 0
+        }
+      },
       onDone: (e) => {
         succeeded = e.succeeded
         failed = e.failed
@@ -379,11 +467,12 @@
         stopTimer()
       },
       onCancelled: () => {
-        // The killed file never finished — return it to the queued look; keep
-        // every already-finished output (ADR-0013).
+        // Whole-batch abort (ADR-0025): the interrupted active row reads as
+        // 'cancelled' (truthful), queued rows stay 'ready'; every finished
+        // output is kept (ADR-0013).
         const r = rows[activeIndex]
         if (r && r.rowPhase === 'converting') {
-          r.rowPhase = 'ready'
+          r.rowPhase = 'cancelled'
           r.percent = 0
         }
         succeeded = rows.filter((x) => x.rowPhase === 'done').length
@@ -395,7 +484,10 @@
     return () => unlisteners.forEach((un) => un())
   })
 
-  onDestroy(stopTimer)
+  onDestroy(() => {
+    stopTimer()
+    if (noticeTimer) clearTimeout(noticeTimer)
+  })
 </script>
 
 <div
@@ -473,7 +565,9 @@
               percent={row.percent}
               outputPath={row.outputPath}
               errorMessage={row.errorMessage}
-              onRemove={phase === 'converting' ? undefined : () => removeRow(i)}
+              converting={phase === 'converting'}
+              onRemove={() => removeRow(i)}
+              onCancelJob={() => cancelJob(i)}
             />
           {/each}
         </div>
@@ -518,7 +612,7 @@
 
   <!-- Full-width status-only bar (ADR-0019 / ADR-0024): batch state + the
        global progress fill; the action lives in the rail footer above. -->
-  <StatusBar {status} />
+  <StatusBar {status} {notice} />
 
   <!-- Collision resolution (ADR-0014): blocks the encode until resolved. -->
   {#if showCollisions}

@@ -18,19 +18,27 @@
     | { state: 'idle' }
     | { state: 'ready'; fileCount: number; totalBytes: number }
     | { state: 'converting'; percent: number; elapsedSecs: number }
-    | { state: 'done'; succeeded: number; failed: number }
+    | { state: 'done'; succeeded: number; failed: number; cancelled: number }
 
-  let { status }: { status: StatusBarStatus } = $props()
+  let {
+    status,
+    notice = null,
+  }: {
+    status: StatusBarStatus
+    /** A transient message (ADR-0025) that overrides the status line while set;
+     *  the derived `status` is the ground truth underneath. */
+    notice?: string | null
+  } = $props()
 
   const fill = $derived(
-    status.state === 'converting'
+    status.state === 'converting' && !notice
       ? Math.min(100, Math.max(0, status.percent))
       : 0,
   )
 </script>
 
 <div class="relative flex h-11 shrink-0 items-center bg-ink px-3 text-paper">
-  {#if status.state === 'converting'}
+  {#if status.state === 'converting' && !notice}
     <!-- Overall batch progress: a flat accent fill along the bar's base. -->
     <div
       class="absolute bottom-0 left-0 h-[3px] bg-accent"
@@ -38,7 +46,12 @@
     ></div>
   {/if}
 
-  {#if status.state === 'idle'}
+  {#if notice}
+    <!-- Transient override (ADR-0025): supplants the status line for ~2.5s. -->
+    <span class="font-mono text-[11px] tracking-[0.04em] text-warning uppercase"
+      >{notice}</span
+    >
+  {:else if status.state === 'idle'}
     <span class="font-mono text-[11px] tracking-[0.04em] text-muted uppercase"
       >No files</span
     >
@@ -67,6 +80,10 @@
       <span class={status.failed > 0 ? 'text-danger' : 'text-muted'}
         >{status.failed} {status.failed === 1 ? 'error' : 'errors'}</span
       >
+      {#if status.cancelled > 0}
+        <span class="text-muted"> · </span>
+        <span class="text-muted">{status.cancelled} cancelled</span>
+      {/if}
     </span>
   {/if}
 </div>

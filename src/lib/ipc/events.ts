@@ -6,6 +6,7 @@ export const CONVERSION_EVENTS = {
   PROGRESS: 'conversion:progress',
   FILE_DONE: 'conversion:file_done',
   FILE_ERROR: 'conversion:file_error',
+  FILE_CANCELLED: 'conversion:file_cancelled',
   DONE: 'conversion:done',
   CANCELLED: 'conversion:cancelled',
 } as const
