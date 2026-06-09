@@ -85,6 +85,39 @@
     else if (xCancellable) onCancelJob?.()
     // else: styled-inert, no action.
   }
+
+  // Styled hint tooltip for the ✕ (ADR-0025): the flat popover look of the info
+  // Tooltip (ink border, paper bg, mono, INSTANT — no fade) instead of the OS
+  // `title`. It is `position: fixed` and portaled to <body> so the file list's
+  // overflow + mask-image (which establishes a stacking context) can't clip it;
+  // it opens LEFT off the ✕, like the info tooltip.
+  let xEl = $state<HTMLButtonElement | null>(null)
+  let hintOpen = $state(false)
+  let hintTop = $state(0)
+  let hintRight = $state(0)
+
+  function showHint() {
+    const el = xEl
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    hintTop = r.top
+    hintRight = window.innerWidth - r.left + 8
+    hintOpen = true
+  }
+
+  function hideHint() {
+    hintOpen = false
+  }
+
+  /** Re-parent a node to <body> so a masked/overflow ancestor can't clip it. */
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node)
+    return {
+      destroy() {
+        node.remove()
+      },
+    }
+  }
 </script>
 
 <div
@@ -126,13 +159,17 @@
       {/if}
       <!-- Always-rendered context-aware ✕ (ADR-0025): Remove when idle, Cancel
            this job mid-batch, styled-inert for a settled row mid-batch. Styled
-           inert (not native `disabled`) so the title tooltip still fires. -->
+           inert (not native `disabled`) so the hint tooltip still fires. -->
       <button
+        bind:this={xEl}
         type="button"
         aria-label={`${xTitle} ${fileName}`}
-        title={xTitle}
         aria-disabled={!xActive}
         onclick={onX}
+        onmouseenter={showHint}
+        onmouseleave={hideHint}
+        onfocus={showHint}
+        onblur={hideHint}
         class="flex h-[18px] w-[18px] cursor-default items-center justify-center
                border font-mono text-[10px] leading-none outline-none
                focus-visible:outline-2 focus-visible:-outline-offset-2
@@ -181,3 +218,16 @@
     >
   {/if}
 </div>
+
+<!-- ✕ hint, styled like the info Tooltip and portaled to <body> (ADR-0025). -->
+{#if hintOpen}
+  <div
+    use:portal
+    role="tooltip"
+    style="position: fixed; top: {hintTop}px; right: {hintRight}px;"
+    class="pointer-events-none z-50 max-w-[220px] border-[1.5px] border-ink
+           bg-paper px-2 py-1 font-mono text-[10px] leading-[1.4] text-ink"
+  >
+    {xTitle}
+  </div>
+{/if}
