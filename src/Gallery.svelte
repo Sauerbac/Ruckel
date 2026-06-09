@@ -259,14 +259,14 @@
   <!-- F2 — feature components, every locked state from mock props.    -->
   <!-- ============================================================== -->
 
-  <!-- File row — the ADR-0020 phased reveal, one row per phase. The persistent
-       remove ✕ (ADR-0023) shows on every phase except converting, where it is
-       gated off; pass a no-op onRemove to surface it here. -->
+  <!-- File row — the ADR-0020 phased reveal, one row per phase. The ✕ (ADR-0025)
+       is always rendered and context-aware: Remove when idle, Cancel-this-job
+       mid-batch, styled-inert for a settled row mid-batch. -->
   <section class="mb-10">
     <h2
       class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
     >
-      File row — phased reveal · remove ✕
+      File row — phased reveal · context-aware ✕
     </h2>
     <div class="flex max-w-md flex-col gap-3">
       <FileRow
@@ -306,6 +306,41 @@
         errorMessage="ffmpeg exited 1: Unsupported codec (hevc) in stream 0"
         onRemove={() => {}}
       />
+      <FileRow
+        fileName="webinar_q2.mkv"
+        sizeBytes={141_557_760}
+        {probe}
+        phase="cancelled"
+        onRemove={() => {}}
+      />
+    </div>
+    <!-- Mid-batch ✕ contexts (ADR-0025): Cancel-this-job vs styled-inert. -->
+    <p
+      class="mt-4 mb-2 font-mono text-[10px] tracking-[0.1em] text-muted uppercase"
+    >
+      Mid-batch (converting) — ✕ becomes Cancel / inert
+    </p>
+    <div class="flex max-w-md flex-col gap-3">
+      <FileRow
+        fileName="lecture_03.mp4"
+        sizeBytes={260_046_848}
+        {probe}
+        phase="converting"
+        percent={40}
+        converting
+        onRemove={() => {}}
+        onCancelJob={() => {}}
+      />
+      <FileRow
+        fileName="lecture_03.mp4"
+        sizeBytes={260_046_848}
+        {probe}
+        phase="done"
+        outputPath="C:\Users\Simon\Videos\lecture_03_ppt.mp4"
+        converting
+        onRemove={() => {}}
+        onCancelJob={() => {}}
+      />
     </div>
   </section>
 
@@ -344,7 +379,7 @@
     <h2
       class="mb-3 font-mono text-[11px] tracking-[0.14em] text-muted uppercase"
     >
-      Status bar — idle · ready · converting · done
+      Status bar — idle · ready · converting · done · notice
     </h2>
     <div class="flex max-w-2xl flex-col gap-3">
       <StatusBar status={{ state: 'idle' }} />
@@ -354,7 +389,13 @@
       <StatusBar
         status={{ state: 'converting', percent: 62, elapsedSecs: 95 }}
       />
-      <StatusBar status={{ state: 'done', succeeded: 2, failed: 1 }} />
+      <StatusBar
+        status={{ state: 'done', succeeded: 2, failed: 1, cancelled: 1 }}
+      />
+      <StatusBar
+        status={{ state: 'idle' }}
+        notice="No convertible video found"
+      />
     </div>
   </section>
 

@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use ts_rs::{Config, TS};
 
 use ruckel_lib::encoder::{
-    events, CancelledEvent, ConversionError, DoneEvent, FileDoneEvent, FileErrorEvent,
-    ProgressEvent,
+    events, CancelledEvent, ConversionError, DoneEvent, FileCancelledEvent, FileDoneEvent,
+    FileErrorEvent, ProgressEvent,
 };
 use ruckel_lib::preflight::collision::Collision;
 use ruckel_lib::preflight::plan::{
@@ -62,6 +62,7 @@ fn generate_ipc_bindings() {
         ProgressEvent,
         FileDoneEvent,
         FileErrorEvent,
+        FileCancelledEvent,
         ConversionError,
         DoneEvent,
         CancelledEvent,

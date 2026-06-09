@@ -57,6 +57,7 @@ pub fn run() {
             commands::check_collisions,
             commands::start_conversion,
             commands::cancel_conversion,
+            commands::cancel_job,
         ])
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

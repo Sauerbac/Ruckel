@@ -12,6 +12,7 @@ import {
   type Collision,
   type ConversionJob,
   type DoneEvent,
+  type FileCancelledEvent,
   type FileDoneEvent,
   type FileErrorEvent,
   type PreflightResult,
@@ -42,11 +43,18 @@ export function cancelConversion(): Promise<void> {
   return invoke('cancel_conversion')
 }
 
+/** `cancel_job` — cancel a single job by its `file_index` without aborting the
+ * batch (ADR-0025). The runner confirms via `conversion:file_cancelled`. */
+export function cancelJob(fileIndex: number): Promise<void> {
+  return invoke('cancel_job', { fileIndex })
+}
+
 /** Subscribers for the conversion event stream (ADR-0016). */
 export interface ConversionHandlers {
   onProgress?: (e: ProgressEvent) => void
   onFileDone?: (e: FileDoneEvent) => void
   onFileError?: (e: FileErrorEvent) => void
+  onFileCancelled?: (e: FileCancelledEvent) => void
   onDone?: (e: DoneEvent) => void
   onCancelled?: () => void
 }
@@ -64,6 +72,9 @@ export async function listenConversion(
     ),
     listen<FileErrorEvent>(CONVERSION_EVENTS.FILE_ERROR, (e) =>
       handlers.onFileError?.(e.payload),
+    ),
+    listen<FileCancelledEvent>(CONVERSION_EVENTS.FILE_CANCELLED, (e) =>
+      handlers.onFileCancelled?.(e.payload),
     ),
     listen<DoneEvent>(CONVERSION_EVENTS.DONE, (e) =>
       handlers.onDone?.(e.payload),

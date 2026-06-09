@@ -18,7 +18,7 @@
     | { state: 'idle' }
     | { state: 'ready'; fileCount: number; totalBytes: number }
     | { state: 'converting'; percent: number; elapsedSecs: number }
-    | { state: 'done'; succeeded: number; failed: number }
+    | { state: 'done'; succeeded: number; failed: number; cancelled: number }
 
   let {
     status,
@@ -80,6 +80,10 @@
       <span class={status.failed > 0 ? 'text-danger' : 'text-muted'}
         >{status.failed} {status.failed === 1 ? 'error' : 'errors'}</span
       >
+      {#if status.cancelled > 0}
+        <span class="text-muted"> · </span>
+        <span class="text-muted">{status.cancelled} cancelled</span>
+      {/if}
     </span>
   {/if}
 </div>

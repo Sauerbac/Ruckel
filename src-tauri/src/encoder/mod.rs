@@ -25,6 +25,8 @@ pub mod events {
     pub const FILE_DONE: &str = "conversion:file_done";
     /// `conversion:file_error` → [`super::FileErrorEvent`]
     pub const FILE_ERROR: &str = "conversion:file_error";
+    /// `conversion:file_cancelled` → [`super::FileCancelledEvent`]
+    pub const FILE_CANCELLED: &str = "conversion:file_cancelled";
     /// `conversion:done` → [`super::DoneEvent`]
     pub const DONE: &str = "conversion:done";
     /// `conversion:cancelled` → [`super::CancelledEvent`]
@@ -36,6 +38,7 @@ pub mod events {
         ("PROGRESS", PROGRESS),
         ("FILE_DONE", FILE_DONE),
         ("FILE_ERROR", FILE_ERROR),
+        ("FILE_CANCELLED", FILE_CANCELLED),
         ("DONE", DONE),
         ("CANCELLED", CANCELLED),
     ];
@@ -69,6 +72,15 @@ pub struct FileErrorEvent {
     pub file_index: u32,
     pub file_name: String,
     pub error_message: String,
+}
+
+/// `conversion:file_cancelled` — one job was cancelled individually (ADR-0025);
+/// the batch continues. Any in-flight temp file has been cleaned up (ADR-0012).
+/// Distinct from `conversion:cancelled`, which aborts the whole batch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export_to = "ipc/")]
+pub struct FileCancelledEvent {
+    pub file_index: u32,
 }
 
 /// One failure in the end-of-batch summary (ADR-0015).

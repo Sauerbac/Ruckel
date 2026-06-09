@@ -49,6 +49,7 @@
   } from '../ipc'
   import {
     cancelConversion,
+    cancelJob as cancelJobCmd,
     checkCollisions,
     inTauri,
     listenConversion,
@@ -107,15 +108,24 @@
   const busy = $derived(reading || phase === 'converting')
   const totalBytes = $derived(rows.reduce((sum, r) => sum + r.sizeBytes, 0))
 
-  /** Overall batch progress (ADR-0020): finished files count as full, the
-   *  active one by its live percent, queued as zero. */
+  // Cancelled rows, derived from row phases (ADR-0025) — the frontend's truth,
+  // since the backend's done summary counts only succeeded/failed.
+  const cancelledCount = $derived(
+    rows.filter((r) => r.rowPhase === 'cancelled').length,
+  )
+
+  /** Overall batch progress (ADR-0020): settled files (done / error /
+   *  cancelled) count as full, the active one by its live percent, queued as
+   *  zero. */
   const overallPercent = $derived(
     rows.length === 0
       ? 0
       : rows.reduce(
           (sum, r) =>
             sum +
-            (r.rowPhase === 'done' || r.rowPhase === 'error'
+            (r.rowPhase === 'done' ||
+            r.rowPhase === 'error' ||
+            r.rowPhase === 'cancelled'
               ? 100
               : r.rowPhase === 'converting'
                 ? r.percent
@@ -128,7 +138,7 @@
     phase === 'converting'
       ? { state: 'converting', percent: overallPercent, elapsedSecs }
       : phase === 'done'
-        ? { state: 'done', succeeded, failed }
+        ? { state: 'done', succeeded, failed, cancelled: cancelledCount }
         : phase === 'ready'
           ? { state: 'ready', fileCount: rows.length, totalBytes }
           : { state: 'idle' },
@@ -341,6 +351,19 @@
     cancelConversion() // the encoder kills FFmpeg; we transition on `cancelled`
   }
 
+  /** Cancel a single job mid-batch (ADR-0025). Marks the row 'cancelled'
+   *  optimistically — a queued cancel shows instantly — then asks the backend;
+   *  the `file_cancelled` event is confirmation. Cancelled rows are kept in
+   *  place (never removed) so the encoder's file_index routing stays valid, and
+   *  re-run on the next Convert (beginBatch resets every row to ready). */
+  function cancelJob(index: number) {
+    const r = rows[index]
+    if (!r || (r.rowPhase !== 'ready' && r.rowPhase !== 'converting')) return
+    r.rowPhase = 'cancelled'
+    r.percent = 0
+    cancelJobCmd(index)
+  }
+
   function reset() {
     stopTimer()
     phase = 'idle'
@@ -401,7 +424,9 @@
         if (phase !== 'converting') return
         activeIndex = e.file_index
         const r = rows[e.file_index]
-        if (r) {
+        // A row cancelled mid-flight stays cancelled — ignore late progress for
+        // it (ADR-0025).
+        if (r && r.rowPhase !== 'cancelled') {
           r.rowPhase = 'converting'
           r.percent = e.percent
         }
@@ -421,6 +446,15 @@
           r.errorMessage = e.error_message
         }
       },
+      onFileCancelled: (e) => {
+        // Confirmation of a per-job cancel (ADR-0025); idempotent with the
+        // optimistic mark in cancelJob.
+        const r = rows[e.file_index]
+        if (r) {
+          r.rowPhase = 'cancelled'
+          r.percent = 0
+        }
+      },
       onDone: (e) => {
         succeeded = e.succeeded
         failed = e.failed
@@ -428,11 +462,12 @@
         stopTimer()
       },
       onCancelled: () => {
-        // The killed file never finished — return it to the queued look; keep
-        // every already-finished output (ADR-0013).
+        // Whole-batch abort (ADR-0025): the interrupted active row reads as
+        // 'cancelled' (truthful), queued rows stay 'ready'; every finished
+        // output is kept (ADR-0013).
         const r = rows[activeIndex]
         if (r && r.rowPhase === 'converting') {
-          r.rowPhase = 'ready'
+          r.rowPhase = 'cancelled'
           r.percent = 0
         }
         succeeded = rows.filter((x) => x.rowPhase === 'done').length
@@ -525,7 +560,9 @@
               percent={row.percent}
               outputPath={row.outputPath}
               errorMessage={row.errorMessage}
-              onRemove={phase === 'converting' ? undefined : () => removeRow(i)}
+              converting={phase === 'converting'}
+              onRemove={() => removeRow(i)}
+              onCancelJob={() => cancelJob(i)}
             />
           {/each}
         </div>

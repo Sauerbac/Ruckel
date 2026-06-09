@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use super::args::ffmpeg_args;
-use super::cancel::CancelToken;
 use super::progress::{percent_of, ProgressParser};
 use crate::preflight::plan::ConversionJob;
 
@@ -32,10 +31,14 @@ pub struct EncodeUpdate {
 /// ever replaced by a complete, valid file and no partial `_ppt.mp4` is ever
 /// left behind. Cancellation (ADR-0013) kills FFmpeg and returns
 /// [`EncodeError::Cancelled`].
+///
+/// `should_cancel` is polled between progress reads; it is a predicate, not a
+/// token, so the caller decides *why* to stop — a whole-batch abort or this one
+/// job's individual cancel (ADR-0025). The encoder only asks "should I stop?".
 pub fn encode<F>(
     job: &ConversionJob,
     duration_secs: f64,
-    cancel: &CancelToken,
+    should_cancel: &dyn Fn() -> bool,
     mut on_progress: F,
 ) -> Result<PathBuf, EncodeError>
 where
@@ -69,7 +72,7 @@ where
     let mut parser = ProgressParser::new();
 
     for line in BufReader::new(stdout).lines() {
-        if cancel.is_cancelled() {
+        if should_cancel() {
             let _ = child.kill();
             let _ = child.wait();
             let _ = std::fs::remove_file(&temp_path);
@@ -93,7 +96,7 @@ where
         .and_then(|h| h.join().ok())
         .unwrap_or_default();
 
-    if cancel.is_cancelled() {
+    if should_cancel() {
         let _ = std::fs::remove_file(&temp_path);
         return Err(EncodeError::Cancelled);
     }
