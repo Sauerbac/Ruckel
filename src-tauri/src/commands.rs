@@ -28,16 +28,17 @@ pub struct EncoderState {
 ///
 /// Dropped paths are scanned into candidate files — folders walked flat,
 /// extension-filtered (B3, ADR-0009/0011) — then each candidate is probed for a
-/// video stream and turned into a job. Each planned `<stem>_ppt.mp4` is checked
-/// against disk; any that already exists is reported as a collision (I3,
-/// ADR-0014) for the frontend to resolve before encoding. Every job starts on
-/// the Presentation default; the frontend overrides `options` from the chosen
-/// preset/controls before `start_conversion` (I2).
+/// video stream and turned into a job whose planned `<stem>_ppt.mp4` output is
+/// computed (ADR-0008). Disk collision detection is *not* done here (ADR-0025):
+/// it is checked fresh at convert time via `check_collisions`, since whether an
+/// output exists only matters when encoding starts and goes stale once a batch
+/// writes its outputs. Every job starts on the Presentation default; the
+/// frontend overrides `options` from the chosen preset/controls before
+/// `start_conversion` (I2).
 #[tauri::command]
 pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
     let mut plan: Vec<ConversionJob> = Vec::new();
     let mut files: Vec<FileProbe> = Vec::new();
-    let mut collisions: Vec<Collision> = Vec::new();
 
     for source in scanner::scan(paths) {
         let probed = probe::probe(&source)?;
@@ -47,17 +48,6 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
         }
 
         let output = output_path_for(&source);
-        let job_index = plan.len() as u32;
-        // Collision detection (ADR-0014): an existing planned output is surfaced
-        // now so the user resolves it before any encode runs.
-        if output.exists() {
-            collisions.push(Collision {
-                job_index,
-                source_path: source.to_string_lossy().into_owned(),
-                output_path: output.to_string_lossy().into_owned(),
-            });
-        }
-
         plan.push(ConversionJob {
             source_path: source.to_string_lossy().into_owned(),
             output_path: output.to_string_lossy().into_owned(),
@@ -71,11 +61,27 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
         });
     }
 
-    Ok(PreflightResult {
-        plan,
-        files,
-        collisions,
-    })
+    Ok(PreflightResult { plan, files })
+}
+
+/// `check_collisions` (ADR-0016, ADR-0025): the single, authoritative collision
+/// source. Tests each job's already-computed `output_path` against disk with no
+/// re-probe, returning one [`Collision`] per planned output that already exists.
+/// Run fresh on every Convert so re-converting a finished batch routes through
+/// the modal instead of silently overwriting (ADR-0008, ADR-0014). The returned
+/// `job_index` aligns to the job's position in the plan passed in.
+#[tauri::command]
+pub fn check_collisions(plan: Vec<ConversionJob>) -> Vec<Collision> {
+    plan.iter()
+        .enumerate()
+        .filter_map(|(index, job)| {
+            Path::new(&job.output_path).exists().then(|| Collision {
+                job_index: index as u32,
+                source_path: job.source_path.clone(),
+                output_path: job.output_path.clone(),
+            })
+        })
+        .collect()
 }
 
 /// `start_conversion` (ADR-0016): run the plan, reporting progress via events.

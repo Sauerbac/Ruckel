@@ -9,19 +9,20 @@ pub mod scanner;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use collision::Collision;
 use plan::ConversionJob;
 
-/// The output of pre-flight (ADR-0010, ADR-0016): the fully-resolved plan,
+/// The output of pre-flight (ADR-0010, ADR-0016): the fully-resolved plan and
 /// per-file probe metadata (duration + resolution for the frontend's phased
-/// reveal, ADR-0020), and any output-path collisions the frontend must resolve
-/// before encoding. Part of the frozen IPC contract (S1).
+/// reveal, ADR-0020). Part of the frozen IPC contract (S1).
+///
+/// Collision detection no longer lives here (ADR-0025): whether a planned output
+/// already exists is checked fresh at convert time via `check_collisions`, not
+/// cached at drop time where it goes stale the instant the batch writes outputs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export_to = "ipc/")]
 pub struct PreflightResult {
     pub plan: Vec<ConversionJob>,
     pub files: Vec<FileProbe>,
-    pub collisions: Vec<Collision>,
 }
 
 /// Per-file probe metadata surfaced in the pre-flight result (ADR-0020, S1

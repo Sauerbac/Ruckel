@@ -9,6 +9,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import {
   CONVERSION_EVENTS,
+  type Collision,
   type ConversionJob,
   type DoneEvent,
   type FileDoneEvent,
@@ -20,9 +21,15 @@ import {
 /** True only inside the Tauri runtime (false in the browser-only gallery). */
 export const inTauri = '__TAURI_INTERNALS__' in window
 
-/** `preflight` — resolve dropped paths into a Conversion Plan + collisions. */
+/** `preflight` — resolve dropped paths into a Conversion Plan. */
 export function preflight(paths: string[]): Promise<PreflightResult> {
   return invoke<PreflightResult>('preflight', { paths })
+}
+
+/** `check_collisions` — fresh, authoritative list of planned outputs that
+ * already exist on disk for the given plan (ADR-0025). Run on every Convert. */
+export function checkCollisions(plan: ConversionJob[]): Promise<Collision[]> {
+  return invoke<Collision[]>('check_collisions', { plan })
 }
 
 /** `start_conversion` — run the plan; progress arrives via events. */

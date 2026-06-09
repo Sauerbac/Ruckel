@@ -49,6 +49,7 @@
   } from '../ipc'
   import {
     cancelConversion,
+    checkCollisions,
     inTauri,
     listenConversion,
     listenFileDrop,
@@ -80,7 +81,8 @@
   // The batch's shared options (ADR-0007); applied to every job at convert.
   let options = $state<ConversionOptions>({ ...PRESETS.PRESENTATION })
 
-  // Collisions detected in pre-flight, surfaced through the modal on Convert.
+  // Collisions detected fresh at convert time (ADR-0025), surfaced through the
+  // modal before any encode runs.
   let collisions = $state<Collision[]>([])
   let showCollisions = $state(false)
 
@@ -180,7 +182,6 @@
         outputPath: null,
         errorMessage: null,
       }))
-      collisions = result.collisions
       phase = 'ready'
     } catch (e) {
       phase = 'idle'
@@ -198,12 +199,18 @@
 
   // --- Convert / collisions ----------------------------------------------
 
-  function onConvert() {
-    // Collisions block the encode until resolved in pre-flight (ADR-0014).
-    if (collisions.length > 0) {
+  async function onConvert() {
+    // Collisions are checked fresh against disk at convert time (ADR-0025), so a
+    // re-convert of a finished batch routes through the modal instead of
+    // silently overwriting. The whole current batch is re-checked, so an
+    // appended batch is covered for free (job_index aligns to row index).
+    const found = await checkCollisions(rows.map((r) => r.job))
+    if (found.length > 0) {
+      collisions = found
       showCollisions = true
       return
     }
+    collisions = []
     beginBatch(rows)
   }
 

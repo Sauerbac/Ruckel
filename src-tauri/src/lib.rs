@@ -54,6 +54,7 @@ pub fn run() {
         .manage(commands::EncoderState::default())
         .invoke_handler(tauri::generate_handler![
             commands::preflight,
+            commands::check_collisions,
             commands::start_conversion,
             commands::cancel_conversion,
         ])
