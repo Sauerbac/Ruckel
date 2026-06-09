@@ -97,6 +97,9 @@
   let hintRight = $state(0)
 
   function showHint() {
+    // Only mid-batch, where the ✕'s meaning is non-obvious (Cancel vs inert). A
+    // bare ✕ outside a batch already reads as Remove — no tooltip needed.
+    if (!converting) return
     const el = xEl
     if (!el) return
     const r = el.getBoundingClientRect()
