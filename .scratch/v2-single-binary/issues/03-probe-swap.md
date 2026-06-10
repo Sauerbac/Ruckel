@@ -1,6 +1,6 @@
 # Probe swap — in-process libavformat behind the unchanged ProbeResult
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -45,3 +45,35 @@ encode) is an explicitly fine state per the PRD.
   this issue changes the inside of `probe()`, nothing else.
 - Duration source: format-level duration (`AVFormatContext.duration`), matching what
   `-show_format` reported; fall back to 0.0 exactly as the current parser does.
+
+## Comments
+
+**2026-06-10 (agent, on completion):** `probe()` now reads the file in-process via
+`AVFormatContextInput::open` (which runs `avformat_find_stream_info`), pulling duration
+from `AVFormatContext.duration` (`AV_TIME_BASE` units → secs, `AV_NOPTS_VALUE`/negative →
+0.0) and dimensions + `has_video` from the first video stream's `codecpar`. `ProbeResult`
+is byte-identical; no caller changed. The JSON-parsing path and its sidecar spawn are gone
+(`grep sidecar_command("ffprobe") src/` is clean). Full suite green: 40 tests.
+
+Verification of acceptance #2 is a new parity test, `fixtures_probe::in_process_probe_matches_ffprobe_sidecar`
+(skip-guarded on `binaries/`), which compares the in-process probe against the still-present
+v1 ffprobe sidecar as ground truth across the whole corpus. **Every fixture matches exactly
+on `has_video`, duration, and dimensions — with one pinned exception: `flv1-mp3.flv`.**
+
+- **Decode-matrix gap found (hand off to issue 05):** the corpus carries `flv1-mp3.flv`,
+  but the manifest's `--enable-decoder` list (ADR-0028 matrix) has `h263` and **not** `flv1`
+  (FLV1/Sorenson Spark is a *distinct* decoder). FLV1 stores no dimensions in the container
+  header, so `find_stream_info` would have to decode a frame to learn them — and with no
+  flv1 decoder compiled in, it can't, leaving width/height at 0 (ffprobe's full build reads
+  64×64). `has_video` is still correct, so pre-flight is unaffected and this is *not* a probe
+  defect. The parity test pins the gap set to exactly `["flv1-mp3.flv"]`, so issue 05 must
+  decide: add `flv1` to the decoder matrix (manifest edit + rebuild) or allowlist it. If
+  flv1 stays out of the matrix, issue 04 can't transcode it either — the same fixture will
+  resurface there.
+- Tried bumping `analyzeduration`/`probesize` on open to close the flv1 gap; confirmed it
+  doesn't help (no decoder to run), so reverted to a plain `open()`.
+- `fixtures_probe.rs` lost its stale sidecar skip-guard on the `has_video` sweep (probe is
+  in-process now, no sidecar needed); the guard moved to the parity test only. Added
+  `serde_json` as a dev-dependency to parse the ground-truth ffprobe JSON.
+- Hybrid state intact: encode still runs through the ffmpeg sidecar (`runner.rs`); `smoke.rs`
+  still green. Sidecar machinery retirement stays with issue 06.

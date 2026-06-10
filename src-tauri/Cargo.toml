@@ -29,3 +29,8 @@ ts-rs = "12"
 # FFmpeg in-process (ADR-0027): safe wrappers over the self-built static libs in
 # src-tauri/ffmpeg-libs/ (ADR-0029). ffmpeg7_1 matches the pinned n7.1.x series.
 rsmpeg = { version = "0.18", default-features = false, features = ["ffmpeg7_1"] }
+
+[dev-dependencies]
+# Integration tests parse the v1 ffprobe sidecar's JSON as ground truth to prove
+# the in-process probe (ADR-0027) matches it; skip-guarded on sidecar presence.
+serde_json = "1.0"
