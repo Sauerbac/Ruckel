@@ -40,7 +40,7 @@ pub fn probe(input: &Path) -> Result<ProbeResult, String> {
 
     let video_stream = ctx
         .streams()
-        .into_iter()
+        .iter()
         .find(|s| s.codecpar().codec_type().is_video());
 
     let has_video = video_stream.is_some();

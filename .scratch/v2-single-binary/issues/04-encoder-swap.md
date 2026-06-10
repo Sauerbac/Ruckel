@@ -1,6 +1,6 @@
 # Encoder swap — in-process transcode loop behind the frozen contract
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -62,3 +62,48 @@ The ffmpeg sidecar stops being spawned; machinery retirement stays with issue 06
   integration tests are the replacement coverage).
 - Subtle parity notes (AAC resampling, faststart-on-temp, drain order) are written out in
   the PRD's "Architecture: the transcode loop" section — follow it.
+
+## Comments
+
+**2026-06-10 (agent, on completion):** The sidecar encode is gone; `runner::encode` now
+runs the full in-process loop via rsmpeg, behind the unchanged `encode()` signature, so
+`commands.rs`/the IPC contract/the frontend are untouched (codegen test still green). Full
+suite green: 46 tests.
+
+Shape:
+- **`args.rs` is now the pure `options → EncoderConfig` seam.** Fixed ADR-0006 fields
+  (libx264 · high · medium · yuv420p · faststart · `level: None`) plus the four resolved
+  knobs (crf, `scale_height`, `fps_cap`, `AudioConfig`). Table tests assert the contract
+  (incl. the deliberate absence of a level) and every preset/knob.
+- **`runner.rs` is the loop:** demux → decode → minimal video graph → libx264 + native
+  AAC (via swresample + an `AVAudioFifo`) → mp4 `+faststart` → temp path → atomic rename.
+  - Video graph built **lazily from the first decoded frame** (its real pixel
+    format/size/SAR — codecpar isn't reliable for all codecs), via `parse_ptr` on a filter
+    string: `[transpose/hflip/vflip] , [scale=-2:H] , format=yuv420p , [fps=N]`. The nine
+    compiled-in filters are exactly enough. Rotation comes from the stream display matrix
+    (`av_display_rotation_get`), CLI-parity autorotate, matrix **not** copied to output.
+  - Encoder + output streams + header are opened lazily on the first *filtered* frame
+    (post-filter dims). Audio decoded before then accumulates in the FIFO and flows once the
+    header is written; final drain flushes resampler → FIFO → encoder.
+  - AAC: source rate kept when the encoder supports it, else nearest; channel layout
+    preserved; `fltp` via swresample. Cancel checked once per demuxed packet → drop
+    contexts (RAII) + delete temp. Progress = muxed video PTS ÷ probed duration, throttled
+    to ~500 ms, with an fps/speed estimate from wall-clock.
+- **`progress.rs`** lost the `-progress` text parser (sidecar-only); kept `percent_of`.
+
+Acceptance verified by `tests/encode_inprocess.rs` (in-process, no sidecar): the h264
+fixture comes out h264-high/yuv420p/aac with **moov before mdat** (a structural faststart
+check the v1 suite never did); resolution cap → even aspect-preserved height; fps cap →
+CFR at the cap (`r_frame_rate`); `Audio::None` → no audio stream; cancel → no output, no
+temp; corrupt input → `Failed`, no output. `smoke.rs` (sidecar-synthesized fixture, now
+in-process encode) still green.
+
+Carry-overs for issue 05:
+- The committed rotated fixture is **64×64 (square)**, so physical-rotation-by-dimension-
+  swap can't be asserted. Issue 05's per-fixture transcode needs a **non-square** rotated
+  sample to verify autorotation visually; for now the rotate path is exercised end-to-end
+  (transcodes cleanly) and `video_filter_desc` is unit-tested.
+- flv1 stays undecodable in the matrix (carried from issue 03) — that fixture won't
+  transcode until issue 05 adds the decoder or allowlists it.
+- The lazy-graph-from-first-frame design was chosen specifically so issue 05's broad matrix
+  doesn't trip over codecs whose pixel format is only known after decoding.
