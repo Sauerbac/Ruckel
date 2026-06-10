@@ -1,6 +1,6 @@
 # Minimal FFmpeg build pipeline + the tracer gate
 
-Status: ready-for-human
+Status: complete
 
 ## Parent
 
@@ -66,3 +66,37 @@ disable-everything risk in one place, before any production code is touched.
   emitted by msvc toolchain mode, CRT selection (`/MT` vs `/MD`) vs. Rust's msvc defaults,
   pkg-config availability from the cargo environment.
 - Build time ~10–20 min is acceptable; this script runs rarely (manifest changes only).
+
+## Comments
+
+**2026-06-10 (agent, on completion):** Both halves landed; **the tracer gate is green**
+(`cargo test --test tracer` → in-process h264-aac.mp4 → mp4 with a video stream), so
+issues 03/04 are unblocked. Pins: FFmpeg 7.1.4, x264 stable@b35605ac, dav1d 1.5.3,
+NASM 2.16.03 (pinned as a manifest *tool* and auto-fetched). All acceptance criteria
+verified: `-Clean` end-to-end run, stale-guard negative test (cargo build fails loudly
+on a stamp mismatch), full suite green (41 tests, sidecar paths untouched), manifest
+records the resolved linking facts, no MinGW objects (cl.exe + nasm only).
+
+Empirical findings, all recorded in the manifest `linking`/notes sections:
+
+- **Discovery resolved to env vars, not pkg-config** — rusty_ffmpeg's Windows build
+  path only supports `FFMPEG_LIBS_DIR`/`FFMPEG_INCLUDE_DIR` (no pkg-config branch
+  exists on Windows). Set repo-relatively in the committed `.cargo/config.toml`.
+  Bindgen needs libclang at every cargo build: `LIBCLANG_PATH` user env var (pip
+  libclang wheel).
+- **rusty_ffmpeg links all seven libav libs unconditionally**, including avdevice →
+  FFmpeg builds a 29 KB avdevice stub (zero devices enabled); deviation from
+  ADR-0027's "avdevice compiled out" letter, documented in the manifest.
+- **Static-lib naming**: everything normalized to `<name>.lib`, except `libx264.lib`
+  keeps its name because FFmpeg's configure hardcodes `-lx264` → `libx264.lib` for
+  msvc. build.rs links `static=libx264`, `static=dav1d`, plus `bcrypt` (enabled by a
+  plain system check regardless of `--disable-autodetect`; av_get_random_seed).
+- **Link directives ride the lib target**: the tracer must `extern crate ruckel_lib`
+  (which also makes the gate prove libav+Tauri link into one binary).
+- **x264 tarball comes from the GitHub mirror** — videolan's GitLab archive endpoint
+  sits behind an Anubis proof-of-work wall; commit hash + SHA-256 still pin content.
+- MSYS2 gotchas baked into the scripts: clear inherited `ORIGINAL_PATH` (else
+  `inherit` mode silently drops the vcvars PATH), and front-run PATH with the MSVC
+  bin dir so coreutils `/usr/bin/link` never shadows link.exe.
+- Static libs total ~28 MB (debug-stripped, -MD, 8-bit/420-only x264) — final exe
+  cost will land in ADR-0028's 10–25 MB estimate after dead-code elimination.

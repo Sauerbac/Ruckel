@@ -1,0 +1,8 @@
+# rusty_ffmpeg (under rsmpeg) discovers the self-built static FFmpeg through these env
+# vars (ADR-0029; see src-tauri/ffmpeg-build-manifest.json "linking"). On Windows its
+# build script supports exactly this libs-dir/include-dir mechanism — no pkg-config.
+# The dir is populated by scripts/build-ffmpeg/build.ps1; src-tauri/build.rs fails the
+# build loudly if it is missing or stale.
+[env]
+FFMPEG_INCLUDE_DIR = { value = "src-tauri/ffmpeg-libs/include", relative = true }
+FFMPEG_LIBS_DIR = { value = "src-tauri/ffmpeg-libs/lib", relative = true }

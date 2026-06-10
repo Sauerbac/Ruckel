@@ -1,0 +1,105 @@
+{
+  "_readme": [
+    "Reproducibility contract for Ruckel's self-built minimal static FFmpeg (ADR-0029).",
+    "Pins the FFmpeg/x264/dav1d sources by version + SHA-256 and the full configure flag",
+    "sets; the FFmpeg flags are the ADR-0028 decode matrix expressed mechanically.",
+    "scripts/build-ffmpeg/build.ps1 consumes this file and installs static libs + headers",
+    "+ .pc files into the gitignored src-tauri/ffmpeg-libs/, stamped with this file's",
+    "SHA-256. src-tauri/build.rs fails the cargo build loudly if the stamp does not match",
+    "(stale-build guard), so any edit to this file requires re-running the build script.",
+    "--prefix is machine-dependent and injected by the script; it is deliberately not",
+    "pinned here. This manifest doubles as the GPL-compliance record (ADR-0003):",
+    "FFmpeg and x264 are GPL, dav1d is BSD-2 (license text must ship with the notices)."
+  ],
+  "manifestVersion": 1,
+  "sources": {
+    "dav1d": {
+      "version": "1.5.3",
+      "tarball": "dav1d-1.5.3.tar.xz",
+      "url": "https://downloads.videolan.org/pub/videolan/dav1d/1.5.3/dav1d-1.5.3.tar.xz",
+      "sha256": "732010aa5ef461fa93355ed2c6c5fedb48ddc4b74e697eaabe8907eaeb943011",
+      "extractedDir": "dav1d-1.5.3"
+    },
+    "x264": {
+      "version": "stable branch, commit b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
+      "tarball": "x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz",
+      "url": "https://github.com/mirror/x264/archive/b35605ace3ddf7c1a5d67a2eb553f034aef41d55.tar.gz",
+      "sha256": "cd71a7515b0e9a012e1ac9b1f8415bebcaf6fc97d4db32286642ac4c0fbe24f9",
+      "extractedDir": "x264-b35605ace3ddf7c1a5d67a2eb553f034aef41d55",
+      "_note": "GitHub mirror of code.videolan.org/videolan/x264 — the upstream GitLab gates its archive endpoint behind an Anubis proof-of-work challenge, so tarballs cannot be fetched from it mechanically. The commit hash pins the content; the SHA-256 additionally pins the GitHub-generated tarball bytes (if GitHub ever regenerates archives differently, the download step fails loudly and this pin gets refreshed)."
+    },
+    "ffmpeg": {
+      "version": "7.1.4",
+      "tarball": "ffmpeg-7.1.4.tar.xz",
+      "url": "https://ffmpeg.org/releases/ffmpeg-7.1.4.tar.xz",
+      "sha256": "71f4aac3573ed9060489cb62526a6c7dda815ae10993789611acd7be9fa9fbf4",
+      "extractedDir": "ffmpeg-7.1.4",
+      "_note": "n7.1.x stable series — same major as the v1 sidecar, within rsmpeg's supported range (ADR-0029)."
+    }
+  },
+  "tools": {
+    "nasm": {
+      "version": "2.16.03",
+      "zip": "nasm-2.16.03-win64.zip",
+      "url": "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/win64/nasm-2.16.03-win64.zip",
+      "sha256": "3ee4782247bcb874378d02f7eab4e294a84d3d15f3f6ee2de2f47a46aa7226e6",
+      "extractedDir": "nasm-2.16.03",
+      "_note": "Native win64 NASM pinned as a build tool (not linked into anything) so the assembler is not at the mercy of whatever is on PATH; used by all three builds."
+    }
+  },
+  "configure": {
+    "dav1d": [
+      "--buildtype=release",
+      "--default-library=static",
+      "-Denable_tools=false",
+      "-Denable_tests=false",
+      "-Denable_examples=false",
+      "-Db_vscrt=md"
+    ],
+    "x264": [
+      "--enable-static",
+      "--disable-cli",
+      "--disable-opencl",
+      "--bit-depth=8",
+      "--chroma-format=420",
+      "--extra-cflags=-MD"
+    ],
+    "_x264Note": "bit-depth/chroma-format are pinned to the output contract (ADR-0006: H.264 high profile, yuv420p — 8-bit 4:2:0 only; the mandatory format=yuv420p filter stage guarantees the encoder never sees anything else). -MD matches the Rust msvc target's default dynamic CRT; one CRT family end to end.",
+    "ffmpeg": [
+      "--toolchain=msvc",
+      "--extra-cflags=-MD",
+      "--pkg-config-flags=--static",
+      "--enable-gpl",
+      "--enable-static",
+      "--disable-shared",
+      "--disable-programs",
+      "--disable-doc",
+      "--disable-network",
+      "--disable-autodetect",
+      "--disable-debug",
+      "--disable-everything",
+      "--enable-avdevice",
+      "--enable-avfilter",
+      "--enable-swscale",
+      "--enable-swresample",
+      "--enable-w32threads",
+      "--enable-libx264",
+      "--enable-libdav1d",
+      "--enable-encoder=libx264,aac",
+      "--enable-muxer=mp4",
+      "--enable-protocol=file",
+      "--enable-demuxer=mov,matroska,avi,asf,flv,mpegts,mpegps,mpegvideo,mxf",
+      "--enable-decoder=h264,hevc,mpeg4,mpeg2video,mpeg1video,msmpeg4v2,msmpeg4v3,wmv1,wmv2,vc1,vp8,vp9,libdav1d,mjpeg,h263,prores,dnxhd,theora,aac,mp3,mp2,ac3,eac3,wmav2,wmapro,vorbis,opus,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s32le,pcm_u8,pcm_f32le,pcm_alaw,pcm_mulaw",
+      "--enable-parser=h264,hevc,mpeg4video,mpegvideo,vp8,vp9,av1,mjpeg,aac,ac3,mpegaudio,opus,vorbis,flac",
+      "--enable-filter=buffer,buffersink,scale,format,transpose,hflip,vflip,fps,null"
+    ],
+    "_ffmpegNote": "The enable-demuxer/decoder/parser/filter enumerations are the ADR-0028 matrix verbatim; the filter list is ADR-0027's minimal libavfilter. --enable-avdevice deviates from the ADR-0027 letter ('avdevice compiled out'): rusty_ffmpeg's Windows link path unconditionally links all seven libav libs, so libavdevice is built as an empty stub — zero input/output devices are enabled (--disable-everything covers them), it merely satisfies the link list. bcrypt has no --enable flag and is not governed by --disable-autodetect either: configure's plain system check enables it on msvc unconditionally, so avutil's av_get_random_seed uses BCryptGenRandom and bcrypt.lib must be linked — exactly ADR-0029's 'bcrypt for RNG' expectation."
+  },
+  "linking": {
+    "rsmpegDiscovery": "FFMPEG_LIBS_DIR + FFMPEG_INCLUDE_DIR env vars, set repo-relatively in the committed .cargo/config.toml [env] section. rusty_ffmpeg's build.rs has no pkg-config path on Windows (its windows branch only supports libs-dir or vcpkg), so the pkg-config-vs-env-vars question from ADR-0029 resolved itself: env vars. Binding generation runs bindgen at cargo build time and needs libclang (LIBCLANG_PATH).",
+    "staticLibNaming": "FFmpeg's msvc toolchain mode and meson emit a mix of <name>.lib / lib<name>.a; rusty_ffmpeg emits cargo:rustc-link-lib=static=<name>, which the MSVC linker resolves as <name>.lib — so build.ps1 normalizes every static lib in ffmpeg-libs/lib to <name>.lib. One exception: FFmpeg's configure hardcodes -lx264 -> libx264.lib for msvc (matching x264's own cl build output), so libx264.lib keeps its name and build.rs links static=libx264.",
+    "extraStaticLibs": ["libx264", "dav1d"],
+    "windowsSystemLibs": ["bcrypt"],
+    "_note": "rusty_ffmpeg links only the seven libav libs; x264, dav1d and the Windows system libs are emitted by src-tauri/build.rs. windowsSystemLibs was resolved empirically by the ADR-0027 tracer slice: bcrypt (avutil av_get_random_seed -> BCryptGenRandom) and nothing else. Note these directives ride on the ruckel lib target — binaries/tests must link ruckel_lib to inherit them."
+  }
+}
