@@ -40,9 +40,12 @@ jobs:
           if (-not (Test-Path (Join-Path $native 'libclang.dll'))) { throw "libclang.dll not found in $native" }
           "LIBCLANG_PATH=$native" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Cache the self-built static FFmpeg (ADR-0029)
+      # restore/save split (not plain actions/cache): the save step sits directly
+      # after the lib build, so the ~7-min FFmpeg build is kept even when a later
+      # step (tests, frontend) fails the job.
+      - name: Restore the self-built static FFmpeg (ADR-0029)
         id: ffmpeg-libs
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: src-tauri/ffmpeg-libs
           key: ffmpeg-libs-${{ runner.os }}-${{ hashFiles('src-tauri/ffmpeg-build-manifest.json', 'scripts/build-ffmpeg/build.ps1', 'scripts/build-ffmpeg/*.sh') }}
@@ -50,6 +53,13 @@ jobs:
       - name: Build FFmpeg static libs from the manifest (cache miss only)
         if: steps.ffmpeg-libs.outputs.cache-hit != 'true'
         run: pwsh scripts/build-ffmpeg/build.ps1
+
+      - name: Save the FFmpeg libs cache
+        if: steps.ffmpeg-libs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: src-tauri/ffmpeg-libs
+          key: ${{ steps.ffmpeg-libs.outputs.cache-primary-key }}
 
       # The cargo cache key includes the manifest hash: a manifest change must also
       # invalidate the cached rusty_ffmpeg rlib, which *bundles* the libav objects
@@ -60,9 +70,13 @@ jobs:
           workspaces: src-tauri
           key: ffmpeg-${{ hashFiles('src-tauri/ffmpeg-build-manifest.json') }}
 
+      # Node 24 bundles npm 11 — the npm major that maintains the committed
+      # lockfile locally. npm 10 (node 22) rejects npm-11-generated lockfiles
+      # over optional-dependency entries (EUSAGE "Missing: @emnapi/... from
+      # lock file"), seen on the first CI run.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install frontend dependencies
