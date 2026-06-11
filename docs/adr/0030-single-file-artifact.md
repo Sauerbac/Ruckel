@@ -20,7 +20,9 @@ by Tauri, FFmpeg lives in the executable. One dependency remains: Tauri renders 
   single accepted system dependency. On a machine without it, the exe does not start; any
   machine realistically running PowerPoint has it.
 - Bundling config is trimmed accordingly: `externalBin` removed (with the sidecar retirement),
-  `bundle.targets` reduced from `"all"`, and the stray `bundle.android` key deleted.
+  bundling disabled outright (`bundle.active: false` — the plain `cargo tauri build` release
+  exe is the artifact; `bundle.icon` still embeds the exe icon via tauri-build), and the
+  stray `bundle.android` key deleted.
 
 ## Alternatives considered
 

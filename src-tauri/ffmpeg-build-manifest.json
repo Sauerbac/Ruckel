@@ -9,7 +9,8 @@
     "(stale-build guard), so any edit to this file requires re-running the build script.",
     "--prefix is machine-dependent and injected by the script; it is deliberately not",
     "pinned here. This manifest doubles as the GPL-compliance record (ADR-0003):",
-    "FFmpeg and x264 are GPL, dav1d is BSD-2 (license text must ship with the notices)."
+    "FFmpeg and x264 are GPL, dav1d is BSD-2 (its license text ships in the repo-root",
+    "THIRD-PARTY-LICENSES.md alongside the GPLv3 LICENSE)."
   ],
   "manifestVersion": 1,
   "sources": {
@@ -34,7 +35,7 @@
       "url": "https://ffmpeg.org/releases/ffmpeg-7.1.4.tar.xz",
       "sha256": "71f4aac3573ed9060489cb62526a6c7dda815ae10993789611acd7be9fa9fbf4",
       "extractedDir": "ffmpeg-7.1.4",
-      "_note": "n7.1.x stable series — same major as the v1 sidecar, within rsmpeg's supported range (ADR-0029)."
+      "_note": "n7.1.x stable series — the same major version v1 shipped, within rsmpeg's supported range (ADR-0029)."
     }
   },
   "tools": {
