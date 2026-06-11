@@ -46,15 +46,15 @@ pub async fn preflight(paths: Vec<String>) -> Result<PreflightResult, String> {
 /// Resolve scanned candidates into a plan, skipping every invalid one (ADR-0026).
 ///
 /// A candidate is kept only if it probes `Ok` *and* carries a video stream;
-/// everything else — no video stream, or any of probe's four failure modes
-/// (won't spawn / non-zero exit / malformed JSON) — is skipped and counted. The
-/// failure modes are treated identically (no per-reason branching): to the user
-/// they all mean "not a usable video, skip it". One stray file in a folder drop
-/// therefore no longer discards the good files alongside it, finally conforming
-/// to ADR-0015 (pre-flight errors are skip-and-surface, never abort).
+/// everything else — no video stream, or any probe error (file won't open or
+/// parse, ADR-0026) — is skipped and counted. The failure modes are treated
+/// identically (no per-reason branching): to the user they all mean "not a
+/// usable video, skip it". One stray file in a folder drop therefore no longer
+/// discards the good files alongside it, finally conforming to ADR-0015
+/// (pre-flight errors are skip-and-surface, never abort).
 ///
 /// `probe` is injected so the loop's skip/keep logic is unit-testable without
-/// spawning the ffprobe sidecar.
+/// opening real media files.
 fn build_preflight<P>(candidates: Vec<std::path::PathBuf>, probe: P) -> PreflightResult
 where
     P: Fn(&Path) -> Result<probe::ProbeResult, String>,
@@ -295,12 +295,12 @@ mod tests {
 
     #[test]
     fn skips_unreadable_candidate_instead_of_aborting() {
-        // A probe Err (won't spawn / non-zero exit / malformed JSON) is skipped,
-        // not propagated — one corrupt file no longer kills the whole drop.
+        // A probe Err (file won't open or parse) is skipped, not propagated —
+        // one corrupt file no longer kills the whole drop.
         let candidates = vec![PathBuf::from("good.mp4"), PathBuf::from("corrupt.mp4")];
         let result = build_preflight(candidates, |p| {
             if p.file_name().and_then(|n| n.to_str()) == Some("corrupt.mp4") {
-                Err("ffprobe failed".into())
+                Err("probe failed".into())
             } else {
                 Ok(video())
             }

@@ -10,8 +10,7 @@
 //!     (buffer/null/buffersink), libx264 encode, mp4 mux, file protocol
 //!     (disable-everything risk).
 //!
-//! Issues 03 (probe swap) and 04 (encoder swap) must not start until this is green.
-//! Production code intentionally still spawns sidecars at this point.
+//! Issues 03 (probe swap) and 04 (encoder swap) did not start until this was green.
 
 // Deliberately link the full app lib even though nothing here calls it: the gate must
 // prove that libav and the Tauri app link together into one binary, and it is the lib

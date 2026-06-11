@@ -2,8 +2,8 @@
 //!
 //! The transcode loop reports position from the muxed video packet PTS; this
 //! module turns that position (in microseconds) plus the probed duration into
-//! the clamped percentage the frontend shows. The old `-progress pipe:1` text
-//! parser is gone with the sidecar (ADR-0027).
+//! the clamped percentage the frontend shows. v1's `-progress pipe:1` text
+//! parser is gone (ADR-0027).
 
 /// Real percentage from the probed duration (ADR-0013): `out_time ÷ duration`,
 /// clamped to 0–100. A zero/unknown duration yields 0 (no divide-by-zero).

@@ -11,7 +11,7 @@ This file is the **source of truth for domain vocabulary**. Decisions live in `d
 - **App framework:** Tauri v2 (Windows-only) — see [ADR-0001](docs/adr/0001-tauri-v2-windows-desktop.md)
 - **Frontend:** Svelte — see [ADR-0002](docs/adr/0002-svelte-frontend.md)
 - **Styling:** Tailwind CSS v4 — see [ADR-0021](docs/adr/0021-tailwind-css.md)
-- **Video backend:** FFmpeg + ffprobe, bundled as sidecar processes — see [ADR-0004](docs/adr/0004-ffmpeg-sidecar-not-ffi.md)
+- **Video backend:** FFmpeg linked in-process (libav\* via rsmpeg, self-built minimal static build) — see [ADR-0027](docs/adr/0027-ffmpeg-linked-in-process.md) / [ADR-0029](docs/adr/0029-self-built-minimal-static-ffmpeg.md)
 - **License:** GPLv3 — see [ADR-0003](docs/adr/0003-gplv3-license.md)
 
 ## Glossary
@@ -21,13 +21,12 @@ Use these terms exactly. Don't drift to synonyms.
 | Term | Definition |
 |---|---|
 | **`_ppt` output** | The converted MP4. Always named `<source-stem>_ppt.mp4`, written in the source file's own folder. The naming contract is fixed — see [ADR-0008](docs/adr/0008-output-location-and-naming.md). |
-| **PowerPoint-safe flags** | The non-negotiable encode flags every output carries: `-c:v libx264 -profile:v high -pix_fmt yuv420p -movflags +faststart -c:a aac`. No hardcoded `-level`. See [ADR-0006](docs/adr/0006-powerpoint-safe-output-encoding.md). |
-| **Sidecar** | A standalone executable (`ffmpeg.exe`, `ffprobe.exe`) bundled with the app and spawned as a child process via `std::process::Command`. Not linked into the app. See [ADR-0004](docs/adr/0004-ffmpeg-sidecar-not-ffi.md). |
+| **PowerPoint-safe flags** | The non-negotiable encode contract every output satisfies: H.264 via libx264, High profile, `yuv420p`, faststart, AAC audio (or none) — and no hardcoded level (x264 derives it). Asserted on `EncoderConfig` by table tests; the values are unchanged since [ADR-0006](docs/adr/0006-powerpoint-safe-output-encoding.md). |
 | **Pre-flight** | The phase that runs the fast checks (scan, filter, probe) *before* any encoding, producing a fully-resolved Conversion Plan. A candidate that fails to probe or has no video stream is skipped, not aborted (ADR-0026); collision detection is *not* here — it runs fresh at convert time (ADR-0025). See [ADR-0010](docs/adr/0010-preflight-encode-separation.md). |
-| **Probe** | An invocation of `ffprobe` to read a file's duration and confirm a video stream is present. |
+| **Probe** | An in-process libavformat read (open + stream info, [ADR-0027](docs/adr/0027-ffmpeg-linked-in-process.md)) that reports a file's duration and dimensions and confirms a video stream is present. |
 | **Conversion Plan** | The fully-resolved batch the encoder executes blindly: an ordered list of Conversion Jobs. Output of pre-flight. |
 | **Conversion Job** | One resolved unit of work: source path, output path, and the four user options applied. |
-| **Encoder** | The component that takes a Conversion Plan and runs FFmpeg per job, emitting progress events. Does no decision-making. |
+| **Encoder** | The component that takes a Conversion Plan and runs the in-process transcode loop per job, emitting progress events. Does no decision-making. |
 | **Flat walk** | Folder scanning that includes only the immediate files in the dropped folder — no subdirectory recursion. See [ADR-0009](docs/adr/0009-processing-model.md). |
 | **Collision** | A planned `_ppt` output path that already exists on disk. Detected fresh at convert time via `check_collisions`, not in pre-flight (ADR-0025). See [ADR-0014](docs/adr/0014-collision-resolution.md). |
 | **Override / Rename / Cancel** | The three per-file collision resolutions: overwrite the existing file / write to a user-supplied name / skip this file and continue the batch. |

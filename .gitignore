@@ -23,11 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# FFmpeg/ffprobe sidecars — bytes are fetched via `npm run fetch:ffmpeg`, verified against the
-# committed manifest (ADR-0005 / ADR-0022). Git-storage (LFS vs commit) is deferred to R2.
-/src-tauri/binaries/*
-!/src-tauri/binaries/ffmpeg-manifest.json
-
 # Self-built minimal static FFmpeg (ADR-0029) — populated by scripts/build-ffmpeg/build.ps1
 # from the committed src-tauri/ffmpeg-build-manifest.json; never committed.
 /src-tauri/ffmpeg-libs/

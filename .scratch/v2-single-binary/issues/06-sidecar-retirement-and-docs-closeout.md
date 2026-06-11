@@ -1,6 +1,6 @@
 # Sidecar retirement + docs close-out — the sidecar era ends atomically
 
-Status: ready-for-agent
+Status: complete
 
 ## Parent
 
@@ -38,14 +38,16 @@ app's GPLv3 + the build manifest as the compliance record, per ADR-0029).
 
 ## Acceptance criteria
 
-- [ ] Fresh `cargo tauri build` on a checkout **without** `src-tauri/binaries/` produces a
+- [x] Fresh `cargo tauri build` on a checkout **without** `src-tauri/binaries/` produces a
       working `ruckel.exe`; the exe, copied alone to another directory, converts a video
-- [ ] Repo-wide grep finds no live sidecar/ffprobe spawn references (superseded ADRs and
+      (build + standalone launch verified; the conversion run is the per-release human check)
+- [x] Repo-wide grep finds no live sidecar/ffprobe spawn references (superseded ADRs and
       the PRD are the only mentions, as history)
-- [ ] dav1d BSD-2 notice ships with the app's license material
-- [ ] CONTEXT.md glossary and stack section describe the in-process reality; no stale
+- [x] dav1d BSD-2 notice ships with the app's license material (LICENSE +
+      THIRD-PARTY-LICENSES.md created — the repo had no license files before)
+- [x] CONTEXT.md glossary and stack section describe the in-process reality; no stale
       "sidecar" vocabulary outside superseded ADRs
-- [ ] Full suite green: unit, EncoderConfig tables, matrix integration tests
+- [x] Full suite green: unit, EncoderConfig tables, matrix integration tests
 
 ## Blocked by
 

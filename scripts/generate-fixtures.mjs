@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Generate the committed test-fixture corpus for the ADR-0028 decode matrix.
 //
-// ONE-SHOT TOOLING — this script depends on the v1 ffmpeg/ffprobe *sidecars*
-// (populate with `npm run fetch:ffmpeg`). It exists so the corpus can be
-// regenerated while the sidecars are still around; once issue 06 retires the
-// sidecar machinery, the committed fixtures under src-tauri/tests/fixtures/
-// are the artifact of record and this script is historical.
+// HISTORICAL — this script ran once against the v1.0-sidecar ffmpeg/ffprobe
+// binaries (full-featured builds with every encoder the matrix needs); the
+// sidecar machinery is retired (issue 06) and those binaries no longer exist
+// in the repo. The committed fixtures under src-tauri/tests/fixtures/ are the
+// artifact of record. Kept as the documentation of how the corpus was made;
+// to re-run it, check out the v1.0-sidecar tag and fetch its binaries.
 //
 // One fixture per real-world (demuxer × video codec × audio codec) cell of the
 // matrix, ~1 s, 64×64 (legal-size exceptions noted inline), silent-tone audio,
@@ -282,7 +283,10 @@ function verifyRotation(name) {
 // --- main ----------------------------------------------------------------------
 
 if (!existsSync(ffmpeg) || !existsSync(ffprobe)) {
-  fail('v1 sidecars missing from src-tauri/binaries/ — run `npm run fetch:ffmpeg` first');
+  fail(
+    'v1 binaries missing from src-tauri/binaries/ — this script is historical; ' +
+      'check out the v1.0-sidecar tag and run `npm run fetch:ffmpeg` there',
+  );
 }
 if (!existsSync(join(fixturesDir, GAP_FILE))) {
   fail(`${GAP_FILE} missing from ${fixturesDir} — it is committed, not generated; restore it`);

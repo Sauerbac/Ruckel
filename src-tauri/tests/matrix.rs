@@ -10,7 +10,8 @@
 //!      even dims / aac when the source has audio / sane duration / moov-before-
 //!      mdat faststart), plus the rotated fixture's swapped dimensions.
 //!
-//! No sidecar, no network — all in-process against the self-built static FFmpeg.
+//! No child processes, no network — all in-process against the self-built
+//! static FFmpeg.
 
 // Native link directives ride ruckel_lib; this test opens outputs with rsmpeg.
 extern crate ruckel_lib;
@@ -70,7 +71,8 @@ fn allowlisted_decoders() -> BTreeSet<String> {
 // ---- name maps (decoder name vs fixture codec_name spelling) ----------------
 
 /// The fixture codec token a decoder covers (identity except where FFmpeg's
-/// decoder name differs from the `codec_name` ffprobe reports).
+/// decoder name differs from the `codec_name` spelling the issue 01 fixture
+/// filenames use).
 fn decoder_to_codec(decoder: &str) -> &str {
     match decoder {
         "libdav1d" => "av1",

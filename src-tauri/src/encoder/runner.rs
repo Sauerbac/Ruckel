@@ -1,5 +1,5 @@
 //! The in-process transcode loop (ADR-0027): one Conversion Job → one mp4,
-//! using the libav* API directly through rsmpeg. Replaces the v1 ffmpeg sidecar.
+//! using the libav* API directly through rsmpeg.
 //!
 //! The Tauri-facing batch loop lives in `commands.rs`; this module owns the
 //! single-job encode so it is testable without a running Tauri app. The encode
@@ -519,7 +519,7 @@ struct AudioPipe {
 impl AudioPipe {
     /// Set up the whole audio path from the input's audio stream. Any failure
     /// is a hard error: the source has audio the user asked to keep, so we
-    /// must not silently strip it (zero behavior change vs the v1 sidecar).
+    /// must not silently strip it (zero behavior change vs v1).
     fn new(
         ifmt: &AVFormatContextInput,
         audio_index: usize,

@@ -6,11 +6,11 @@
 //! filtered by extension (ADR-0011):
 //!
 //! - known video extension → candidate;
-//! - no extension → candidate, deferred to the ffprobe fallback (ADR-0011);
+//! - no extension → candidate, deferred to the probe fallback (ADR-0011);
 //! - any other (known non-media or unknown) extension → skipped.
 //!
-//! The scanner does filesystem IO (it reads directories) but never spawns
-//! FFmpeg, so the flat-walk + filter rules are table-tested over a temp tree.
+//! The scanner does filesystem IO (it reads directories) but never probes,
+//! so the flat-walk + filter rules are table-tested over a temp tree.
 //! Probing each candidate for duration / video-stream confirmation stays in
 //! pre-flight (`commands.rs`), per the ADR-0010 separation.
 
@@ -67,7 +67,7 @@ where
 }
 
 /// Whether a file's extension marks it as a video candidate (ADR-0011).
-/// Extensionless files are candidates too — the ffprobe fallback decides.
+/// Extensionless files are candidates too — the probe fallback decides.
 fn is_video_candidate(path: &Path) -> bool {
     match path.extension() {
         None => true,

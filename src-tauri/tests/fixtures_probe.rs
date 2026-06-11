@@ -1,16 +1,16 @@
 //! Every committed fixture in the ADR-0028 corpus must probe successfully —
-//! i.e. the pre-flight gate (`has_video`) would let v1 convert it. This is the
-//! probe-compatibility half of issue 01; the manifest↔corpus drift test
-//! arrives with issue 05.
+//! i.e. the pre-flight gate (`has_video`) lets it through to conversion. This
+//! is the probe-compatibility half of issue 01; the manifest↔corpus drift gate
+//! lives in `matrix.rs` (issue 05).
 //!
-//! As of issue 03 the probe runs in-process (ADR-0027) — no sidecar — so the
-//! `has_video` sweep runs unconditionally. A second test pins parity against the
-//! retired ffprobe sidecar (skip-guarded on its presence) so we know the swap
-//! reads the same duration and dimensions the old code did.
+//! The probe runs in-process (ADR-0027). While the v1 ffprobe binary was still
+//! around, a parity test here pinned the in-process probe's duration and
+//! dimensions against its JSON output for the whole corpus; it left with the
+//! sidecar retirement (issue 06) after the swap was proven.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use ruckel_lib::{probe, sidecar_command, sidecar_path};
+use ruckel_lib::probe;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -42,88 +42,4 @@ fn every_committed_fixture_probes_with_a_video_stream() {
 
     // Sanity: the corpus is actually there (matrix cells + rotated + noext).
     assert!(probed >= 30, "expected the full corpus, found {probed} fixtures");
-}
-
-#[test]
-fn in_process_probe_matches_ffprobe_sidecar() {
-    if !sidecar_path("ffprobe").exists() {
-        eprintln!("skipping sidecar-parity test: src-tauri/binaries/ is empty");
-        return;
-    }
-
-    // Exact parity is expected for the whole corpus. (Issue 03 originally pinned
-    // one gap here — flv1's frame-only dimensions, unreadable because the matrix
-    // lacked the `flv` decoder; issue 05's arbiter call added it to the manifest
-    // and rebuilt the libs, so the exception is gone.)
-    for path in fixtures() {
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        let ours = probe::probe(&path)
-            .unwrap_or_else(|e| panic!("{name} failed to probe in-process: {e}"));
-        let theirs = ffprobe_ground_truth(&path);
-
-        assert_eq!(
-            ours.has_video, theirs.has_video,
-            "{name}: has_video disagrees (in-process {}, ffprobe {})",
-            ours.has_video, theirs.has_video
-        );
-        assert!(
-            (ours.duration_secs - theirs.duration_secs).abs() <= 0.5,
-            "{name}: duration disagrees (in-process {:.3}s, ffprobe {:.3}s)",
-            ours.duration_secs, theirs.duration_secs
-        );
-        assert_eq!(
-            (ours.width, ours.height),
-            (theirs.width, theirs.height),
-            "{name}: dimensions disagree (in-process {}x{}, ffprobe {}x{})",
-            ours.width, ours.height, theirs.width, theirs.height
-        );
-    }
-}
-
-struct Truth {
-    has_video: bool,
-    width: u32,
-    height: u32,
-    duration_secs: f64,
-}
-
-/// Ground truth from the v1 ffprobe sidecar — the values the old `probe()`
-/// would have parsed out of `-show_format -show_streams` JSON.
-fn ffprobe_ground_truth(path: &Path) -> Truth {
-    let output = sidecar_command("ffprobe")
-        .args([
-            "-v",
-            "quiet",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-show_streams",
-        ])
-        .arg(path)
-        .output()
-        .expect("spawn ffprobe sidecar");
-    assert!(
-        output.status.success(),
-        "ffprobe failed for {}: {}",
-        path.display(),
-        output.status
-    );
-
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("ffprobe emits valid json");
-
-    let video = json["streams"]
-        .as_array()
-        .and_then(|streams| streams.iter().find(|s| s["codec_type"] == "video"));
-
-    Truth {
-        has_video: video.is_some(),
-        width: video.and_then(|s| s["width"].as_u64()).unwrap_or(0) as u32,
-        height: video.and_then(|s| s["height"].as_u64()).unwrap_or(0) as u32,
-        duration_secs: json["format"]["duration"]
-            .as_str()
-            .and_then(|d| d.parse::<f64>().ok())
-            .filter(|d| d.is_finite() && *d >= 0.0)
-            .unwrap_or(0.0),
-    }
 }

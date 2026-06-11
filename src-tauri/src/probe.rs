@@ -2,11 +2,10 @@
 //! and confirming a video stream is present. Shared by `preflight` and
 //! `encoder` (ADR-0017).
 //!
-//! As of ADR-0027 (v2 single-binary) this reads the file directly through
-//! libavformat (`avformat_open_input` + `avformat_find_stream_info` via rsmpeg)
-//! instead of spawning the `ffprobe` sidecar. The [`ProbeResult`] surface is
-//! unchanged — pre-flight, the ADR-0026 skip semantics, and the ADR-0011
-//! extensionless fallback do not notice the swap.
+//! Reads the file directly through libavformat (`avformat_open_input` +
+//! `avformat_find_stream_info` via rsmpeg, ADR-0027). The [`ProbeResult`]
+//! surface is unchanged from v1 — pre-flight, the ADR-0026 skip semantics, and
+//! the ADR-0011 extensionless fallback never noticed the swap.
 
 use std::ffi::CString;
 use std::path::Path;
@@ -60,9 +59,9 @@ pub fn probe(input: &Path) -> Result<ProbeResult, String> {
 }
 
 /// Convert the format-level duration (`AVFormatContext.duration`, in
-/// `AV_TIME_BASE` units) to seconds, matching what `ffprobe -show_format`
+/// `AV_TIME_BASE` units) to seconds, matching the format duration the v1 probe
 /// reported. Unknown durations (`AV_NOPTS_VALUE`, negative) fall back to `0.0`
-/// exactly as the old JSON parser did.
+/// exactly as v1's parser did.
 fn duration_secs(raw: i64) -> f64 {
     if raw == rsmpeg::ffi::AV_NOPTS_VALUE || raw < 0 {
         return 0.0;
