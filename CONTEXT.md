@@ -71,3 +71,4 @@ Use these terms exactly. Don't drift to synonyms.
 | [0029](docs/adr/0029-self-built-minimal-static-ffmpeg.md) | v2: self-built minimal static FFmpeg, manifest-pinned — supersedes 0022 |
 | [0030](docs/adr/0030-single-file-artifact.md) | v2: bare `ruckel.exe` is the product artifact |
 | [0031](docs/adr/0031-in-process-transcode-runtime.md) | v2: in-process transcode runtime (thread, atomic cancel, PTS progress) |
+| [0032](docs/adr/0032-github-actions-ci.md) | CI/CD on GitHub Actions — manifest-cached FFmpeg, release-on-tag |

@@ -1,0 +1,110 @@
+# CI/CD (ADR-0032): build the self-built static FFmpeg from the committed manifest,
+# run the full test suite, produce the bare ruckel.exe (ADR-0030), and — on a v* tag —
+# publish it as a GitHub release together with the license texts (ADR-0003).
+#
+# The expensive step (dav1d → x264 → FFmpeg, ~20-30 min) is cached keyed on the build
+# manifest + build scripts, so ordinary pushes rebuild only the Rust/frontend side.
+
+name: build
+
+on:
+  push:
+    branches: [main, v2]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # build.ps1 prerequisites the runner image doesn't already satisfy
+      # (VS 2022 C++ x64, MSYS2 at C:\msys64, system curl/tar are preinstalled;
+      # NASM is pinned in the manifest and fetched by the script itself).
+      - name: Install MSYS2 packages (make, pkgconf, diffutils)
+        run: C:\msys64\usr\bin\bash.exe -lc 'pacman -Sy --needed --noconfirm make pkgconf diffutils'
+
+      - name: Install meson, ninja, libclang (pip)
+        run: |
+          pip install meson ninja libclang
+          $native = python -c "import clang, pathlib; print(pathlib.Path(clang.__file__).parent / 'native')"
+          if (-not (Test-Path (Join-Path $native 'libclang.dll'))) { throw "libclang.dll not found in $native" }
+          "LIBCLANG_PATH=$native" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Cache the self-built static FFmpeg (ADR-0029)
+        id: ffmpeg-libs
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/ffmpeg-libs
+          key: ffmpeg-libs-${{ runner.os }}-${{ hashFiles('src-tauri/ffmpeg-build-manifest.json', 'scripts/build-ffmpeg/build.ps1', 'scripts/build-ffmpeg/*.sh') }}
+
+      - name: Build FFmpeg static libs from the manifest (cache miss only)
+        if: steps.ffmpeg-libs.outputs.cache-hit != 'true'
+        run: pwsh scripts/build-ffmpeg/build.ps1
+
+      # The cargo cache key includes the manifest hash: a manifest change must also
+      # invalidate the cached rusty_ffmpeg rlib, which *bundles* the libav objects
+      # (the rebuild trap documented in scripts/build-ffmpeg/README.md). The
+      # runtime_lib_matches_manifest_configuration test is the backstop.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ffmpeg-${{ hashFiles('src-tauri/ffmpeg-build-manifest.json') }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Frontend checks (svelte-check + tsc)
+        run: npm run check
+
+      - name: Test (unit + EncoderConfig tables + fixture corpus + matrix gates)
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build ruckel.exe (bare exe, ADR-0030)
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ruckel
+          path: src-tauri/target/release/ruckel.exe
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ruckel
+
+      # The release is the exe plus the license material (GPLv3 compliance, ADR-0003;
+      # the committed ffmpeg-build-manifest.json in the tagged source is the
+      # FFmpeg/x264 source pin).
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Ruckel $GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            ruckel.exe LICENSE THIRD-PARTY-LICENSES.md
