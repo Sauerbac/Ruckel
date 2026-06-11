@@ -1,6 +1,6 @@
 [package]
 name = "ruckel"
-version = "0.1.0"
+version = "1.0.0"
 description = "Convert video files into PowerPoint-friendly MP4s"
 authors = ["Simon Auerbach <auerbach.simon@web.de>"]
 license = "GPL-3.0-only"

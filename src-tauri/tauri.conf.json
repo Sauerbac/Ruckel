@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Ruckel",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "de.auerbach.ruckel",
   "build": {
     "frontendDist": "../dist",
