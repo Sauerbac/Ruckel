@@ -43,6 +43,11 @@ script. MSYS2 location can be overridden with `-Msys2Root` or `RUCKEL_MSYS2_ROOT
 - The script stamps `ffmpeg-libs/manifest-hash.txt` with the manifest's SHA-256;
   `src-tauri/build.rs` **fails the cargo build loudly** if the stamp is missing or stale,
   so a stale local build can never silently link. Any manifest edit ⇒ re-run this script.
+- **The stamp alone is not enough**: rustc *bundles* the static libs into
+  `librusty_ffmpeg.rlib` when that crate compiles, so later links reuse the rlib's
+  embedded copy and never re-read fresh `.lib` files. The script therefore ends with
+  `cargo clean -p rusty_ffmpeg`; the `runtime_lib_matches_manifest_configuration` test
+  in `tests/matrix.rs` verifies the *linked* configuration as a backstop.
 - rsmpeg/rusty_ffmpeg find the libs via `FFMPEG_LIBS_DIR`/`FFMPEG_INCLUDE_DIR`, set
   repo-relatively in the committed `.cargo/config.toml`. Extra libs (x264, dav1d,
   Windows system libs) are emitted by `src-tauri/build.rs` — see the manifest's

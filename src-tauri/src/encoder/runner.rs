@@ -150,8 +150,19 @@ fn transcode<F: FnMut(EncodeUpdate)>(
         (i, rotation, dec)
     };
 
-    // --- Audio decoder + pipe (best-effort: a missing audio decoder just drops
-    //     audio, the same outcome the user would get from a -an job) ---
+    // The container's start time (AV_TIME_BASE units). MPEG-PS/TS streams begin
+    // at a nonzero PTS (~0.44s for VOB, ~1.4s for TS); the ffmpeg CLI shifts all
+    // output timestamps so the file starts at 0, and so do we — otherwise the
+    // output duration inflates and audio (whose PTS we synthesize) drifts out of
+    // sync with video.
+    let input_start_time = if ifmt.start_time == ffi::AV_NOPTS_VALUE { 0 } else { ifmt.start_time };
+    // The same offset in the video stream's packet time base, for frame PTS.
+    let video_pts_offset = av_rescale_q(
+        input_start_time,
+        ffi::AVRational { num: 1, den: ffi::AV_TIME_BASE as i32 },
+        dec.pkt_timebase,
+    );
+
     let mut adec: Option<AVCodecContext> = None;
     let mut audio: Option<AudioPipe> = None;
 
@@ -160,11 +171,17 @@ fn transcode<F: FnMut(EncodeUpdate)>(
     let global_header = ofmt.oformat().flags & ffi::AVFMT_GLOBALHEADER as i32 != 0;
 
     if let (AudioConfig::Aac { bitrate_bps }, Some(ai)) = (config.audio, audio_index) {
-        if let Some(pipe) = AudioPipe::try_new(&ifmt, ai, bitrate_bps, global_header, &mut adec) {
-            audio = Some(pipe);
-        } else {
-            audio_index = None; // couldn't set audio up — proceed video-only
-        }
+        // A source with audio that we cannot wire up is a job failure, not a
+        // silent audio drop — v1 (full-build ffmpeg) would have transcoded it,
+        // and zero behavior change is the bar (ADR-0016/0031).
+        audio = Some(AudioPipe::new(
+            &ifmt,
+            ai,
+            bitrate_bps,
+            global_header,
+            input_start_time,
+            &mut adec,
+        )?);
     }
     let audio_active = audio.is_some();
 
@@ -199,6 +216,7 @@ fn transcode<F: FnMut(EncodeUpdate)>(
                 &graph,
                 &mut filters,
                 rotation,
+                video_pts_offset,
                 &mut enc,
                 &mut ofmt,
                 &mut header_written,
@@ -244,6 +262,7 @@ fn transcode<F: FnMut(EncodeUpdate)>(
         &graph,
         &mut filters,
         rotation,
+        video_pts_offset,
         &mut enc,
         &mut ofmt,
         &mut header_written,
@@ -305,6 +324,7 @@ fn drain_decoder_into_filter<'g, F: FnMut(EncodeUpdate)>(
     graph: &'g AVFilterGraph,
     filters: &mut Option<(AVFilterContextMut<'g>, AVFilterContextMut<'g>)>,
     rotation: i32,
+    pts_offset: i64,
     enc: &mut Option<AVCodecContext>,
     ofmt: &mut AVFormatContextOutput,
     header_written: &mut bool,
@@ -321,7 +341,12 @@ fn drain_decoder_into_filter<'g, F: FnMut(EncodeUpdate)>(
             Err(RsmpegError::DecoderDrainError) | Err(RsmpegError::DecoderFlushedError) => break,
             Err(e) => return Err(EncodeError::Failed(format!("decode video: {e}"))),
         };
-        frame.set_pts(frame.best_effort_timestamp);
+        // Shift to a zero-based timeline (CLI parity, see input_start_time).
+        if frame.best_effort_timestamp != ffi::AV_NOPTS_VALUE {
+            frame.set_pts(frame.best_effort_timestamp - pts_offset);
+        } else {
+            frame.set_pts(frame.best_effort_timestamp);
+        }
         if filters.is_none() {
             *filters = Some(build_video_graph(graph, &frame, dec.pkt_timebase, rotation, config)?);
         }
@@ -481,34 +506,57 @@ struct AudioPipe {
     out_sample_rate: i32,
     frame_size: i32,
     next_pts: i64,
+    /// The audio stream's time base — for mapping the first decoded frame's
+    /// timestamp onto the output sample clock.
+    in_time_base: ffi::AVRational,
+    /// Container start time (AV_TIME_BASE units) subtracted from all timestamps
+    /// (zero-based output timeline, CLI parity).
+    start_time: i64,
+    /// Set once the first decoded frame has anchored `next_pts`.
+    anchored: bool,
 }
 
 impl AudioPipe {
-    /// Set up the whole audio path from the input's audio stream. Returns `None`
-    /// (drop audio gracefully) if the codec can't be decoded/encoded here.
-    fn try_new(
+    /// Set up the whole audio path from the input's audio stream. Any failure
+    /// is a hard error: the source has audio the user asked to keep, so we
+    /// must not silently strip it (zero behavior change vs the v1 sidecar).
+    fn new(
         ifmt: &AVFormatContextInput,
         audio_index: usize,
         bitrate_bps: i64,
         global_header: bool,
+        start_time: i64,
         adec_out: &mut Option<AVCodecContext>,
-    ) -> Option<Self> {
+    ) -> Result<Self, EncodeError> {
         let astream = &ifmt.streams()[audio_index];
         let codecpar = astream.codecpar();
-        let decoder = AVCodec::find_decoder(codecpar.codec_id)?;
+        let decoder = AVCodec::find_decoder(codecpar.codec_id)
+            .ok_or_else(|| EncodeError::Failed("no decoder for this audio codec".into()))?;
         let mut adec = AVCodecContext::new(&decoder);
-        adec.apply_codecpar(&codecpar).ok()?;
+        adec.apply_codecpar(&codecpar)
+            .map_err(|e| EncodeError::Failed(format!("apply audio codecpar: {e}")))?;
         adec.set_pkt_timebase(astream.time_base);
-        adec.open(None).ok()?;
+        adec.open(None)
+            .map_err(|e| EncodeError::Failed(format!("open audio decoder: {e}")))?;
 
-        let encoder = AVCodec::find_encoder_by_name(c"aac")?;
+        let encoder = AVCodec::find_encoder_by_name(c"aac")
+            .ok_or_else(|| EncodeError::Failed("aac encoder is missing".into()))?;
         let out_sample_rate = choose_sample_rate(&encoder, adec.sample_rate);
 
-        // Preserve the source channel layout (CLI parity). Standard layouts are
-        // mask-based with no heap, so the bit-copies below are safe; the Drop
-        // impl frees any custom map.
+        // Preserve the source channel layout (CLI parity). Containers like AVI
+        // carry only a channel count, leaving the layout order UNSPEC — the aac
+        // encoder and swresample both reject that, so normalize to the default
+        // layout for the same channel count (exactly what the CLI does).
+        // Standard layouts are mask-based with no heap, so the bit-copies below
+        // are safe; the Drop impl frees any custom map.
         let mut out_ch_layout: ffi::AVChannelLayout = unsafe { std::mem::zeroed() };
-        unsafe { ffi::av_channel_layout_copy(&mut out_ch_layout, &adec.ch_layout) };
+        if adec.ch_layout.order == ffi::AV_CHANNEL_ORDER_UNSPEC {
+            unsafe {
+                ffi::av_channel_layout_default(&mut out_ch_layout, adec.ch_layout.nb_channels)
+            };
+        } else {
+            unsafe { ffi::av_channel_layout_copy(&mut out_ch_layout, &adec.ch_layout) };
+        }
 
         let mut aenc = AVCodecContext::new(&encoder);
         aenc.set_sample_fmt(ffi::AV_SAMPLE_FMT_FLTP);
@@ -521,19 +569,22 @@ impl AudioPipe {
         if global_header {
             aenc.set_flags(aenc.flags | ffi::AV_CODEC_FLAG_GLOBAL_HEADER as i32);
         }
-        aenc.open(None).ok()?;
+        aenc.open(None)
+            .map_err(|e| EncodeError::Failed(format!("open aac encoder: {e}")))?;
 
-        let swr = SwrContext::new(
+        // Input side uses the same normalized layout: for an UNSPEC source the
+        // samples are positional either way, and swresample rejects UNSPEC.
+        let mut swr = SwrContext::new(
             &out_ch_layout,
             ffi::AV_SAMPLE_FMT_FLTP,
             out_sample_rate,
-            &adec.ch_layout,
+            &out_ch_layout,
             adec.sample_fmt,
             adec.sample_rate,
         )
-        .ok()?;
-        let mut swr = swr;
-        swr.init().ok()?;
+        .map_err(|e| EncodeError::Failed(format!("audio resampler setup: {e}")))?;
+        swr.init()
+            .map_err(|e| EncodeError::Failed(format!("audio resampler init: {e}")))?;
 
         let frame_size = if aenc.frame_size > 0 { aenc.frame_size } else { 1024 };
         let fifo = AVAudioFifo::new(
@@ -542,8 +593,9 @@ impl AudioPipe {
             frame_size.max(1),
         );
 
+        let in_time_base = astream.time_base;
         *adec_out = Some(adec);
-        Some(AudioPipe {
+        Ok(AudioPipe {
             aenc,
             swr,
             fifo,
@@ -551,11 +603,31 @@ impl AudioPipe {
             out_sample_rate,
             frame_size,
             next_pts: 0,
+            in_time_base,
+            start_time,
+            anchored: false,
         })
     }
 
     /// Resample one decoded audio frame into the FIFO.
     fn push_decoded(&mut self, frame: &AVFrame) -> Result<(), EncodeError> {
+        // Anchor the output sample clock to the first frame's real position on
+        // the zero-based timeline, so audio stays aligned with video when the
+        // container doesn't start at t=0 (VOB/TS). Subsequent PTS continue by
+        // sample count (gapless, matching the resampler's output).
+        if !self.anchored {
+            if frame.best_effort_timestamp != ffi::AV_NOPTS_VALUE {
+                let out_tb = ffi::AVRational { num: 1, den: self.out_sample_rate };
+                let pos = av_rescale_q(frame.best_effort_timestamp, self.in_time_base, out_tb)
+                    - av_rescale_q(
+                        self.start_time,
+                        ffi::AVRational { num: 1, den: ffi::AV_TIME_BASE as i32 },
+                        out_tb,
+                    );
+                self.next_pts = pos.max(0);
+            }
+            self.anchored = true;
+        }
         let out_samples = self.swr.get_out_samples(frame.nb_samples);
         if out_samples <= 0 {
             return Ok(());

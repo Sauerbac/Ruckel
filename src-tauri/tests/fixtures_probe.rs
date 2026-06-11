@@ -51,14 +51,10 @@ fn in_process_probe_matches_ffprobe_sidecar() {
         return;
     }
 
-    // Dimensions our minimal build can't read because the stream's codec needs
-    // a decoder that isn't in the ADR-0028 matrix (the codec carries no size in
-    // its container header, so `find_stream_info` would have to decode a frame).
-    // This is a build-matrix concern (issue 05's drift test), not a probe defect:
-    // `has_video` — the only field pre-flight gates on — still matches. We pin the
-    // exact set so a regression in any other codec, or a new gap, fails the test.
-    let mut decoder_gap_dims: Vec<String> = Vec::new();
-
+    // Exact parity is expected for the whole corpus. (Issue 03 originally pinned
+    // one gap here — flv1's frame-only dimensions, unreadable because the matrix
+    // lacked the `flv` decoder; issue 05's arbiter call added it to the manifest
+    // and rebuilt the libs, so the exception is gone.)
     for path in fixtures() {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
         let ours = probe::probe(&path)
@@ -75,11 +71,6 @@ fn in_process_probe_matches_ffprobe_sidecar() {
             "{name}: duration disagrees (in-process {:.3}s, ffprobe {:.3}s)",
             ours.duration_secs, theirs.duration_secs
         );
-
-        if (ours.width, ours.height) == (0, 0) && (theirs.width, theirs.height) != (0, 0) {
-            decoder_gap_dims.push(name);
-            continue;
-        }
         assert_eq!(
             (ours.width, ours.height),
             (theirs.width, theirs.height),
@@ -87,17 +78,6 @@ fn in_process_probe_matches_ffprobe_sidecar() {
             ours.width, ours.height, theirs.width, theirs.height
         );
     }
-
-    decoder_gap_dims.sort();
-    assert_eq!(
-        decoder_gap_dims,
-        ["flv1-mp3.flv"],
-        "in-process dimension gaps changed. The only expected gap is flv1 — the \
-         FLV1/Sorenson decoder is absent from the ADR-0028 matrix (the manifest \
-         enables h263, a distinct decoder), so its frame-only dimensions can't be \
-         read in-process. Resolve in issue 05 (add the decoder or allowlist it). \
-         Got: {decoder_gap_dims:?}"
-    );
 }
 
 struct Truth {

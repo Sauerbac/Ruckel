@@ -166,8 +166,12 @@ function Rename-StaticLibs {
         if ($_.Name -eq 'libx264.lib') { return }
         if ($_.Name -match '^lib(.+?)\.(a|lib)$') {
             $target = Join-Path $_.DirectoryName "$($Matches[1]).lib"
-            if (Test-Path $target) { Remove-Item $_.FullName }
-            else { Move-Item $_.FullName $target }
+            # The fresh lib<name>.a always wins. (An earlier version kept a
+            # pre-existing <name>.lib and deleted the new .a instead — on
+            # incremental re-runs that silently stranded the previous build's
+            # libs behind a fresh manifest stamp, defeating the stale guard.)
+            if (Test-Path $target) { Remove-Item $target }
+            Move-Item $_.FullName $target
             Write-Host "  $($_.Name) -> $(Split-Path $target -Leaf)"
         }
     }
@@ -184,6 +188,18 @@ Step 'Stamping ffmpeg-libs with the manifest hash'
 $hash = (Get-FileHash $ManifestPath -Algorithm SHA256).Hash.ToLower()
 Set-Content -Path (Join-Path $Prefix 'manifest-hash.txt') -Value $hash -NoNewline
 Write-Host "  manifest-hash.txt = $hash"
+
+# rustc bundles `static=` libs INTO librusty_ffmpeg.rlib when that crate is
+# compiled (+bundle is the default), so later links reuse the rlib's embedded
+# copy of the old libav objects and never re-read the fresh .lib files. Without
+# this clean, a lib rebuild silently never reaches the binaries.
+Step 'Invalidating the cached rusty_ffmpeg rlib (it bundles the libav objects)'
+if (Get-Command cargo -ErrorAction SilentlyContinue) {
+    cargo clean -p rusty_ffmpeg --manifest-path (Join-Path $RepoRoot 'src-tauri\Cargo.toml')
+    Write-Host '  cargo clean -p rusty_ffmpeg done'
+} else {
+    Write-Warning 'cargo not on PATH — run `cargo clean -p rusty_ffmpeg` manually before the next build, or the old libs stay linked.'
+}
 
 Step 'Done'
 Get-ChildItem (Join-Path $Prefix 'lib') -Filter '*.lib' | ForEach-Object {

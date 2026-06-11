@@ -28,6 +28,7 @@ import {
   rmSync,
   statSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -174,8 +175,10 @@ const fixtures = [
 ];
 
 // Derived fixtures (not generated from lavfi sources).
-const ROTATED_SOURCE = 'h264-aac.mp4';
 const ROTATED_NAME = 'h264-aac-rotated.mp4';
+// Non-square (96×64) on purpose: it lets the issue-05 transcode test prove
+// autorotation by the output's *swapped* dimensions (a square clip couldn't).
+const ROTATED_SIZE = '96x64';
 const NOEXT_SOURCE = 'h264-aac.mp4';
 const NOEXT_NAME = 'h264-aac-noext';
 
@@ -294,16 +297,29 @@ for (const entry of readdirSync(fixturesDir)) {
 console.log(`Generating ${fixtures.length} fixtures with the v1 sidecar ffmpeg…`);
 for (const fix of fixtures) generate(fix);
 
-// Rotated: remux the plain h264 fixture with display-matrix side data only —
-// stream copy guarantees the rotation is metadata, never baked-in pixels.
+// Rotated: encode a non-square h264+aac clip, then remux it with display-matrix
+// side data only — the stream copy guarantees the rotation is metadata, never
+// baked-in pixels, and the non-square frame makes the swap observable.
 {
-  const res = run(ffmpeg, [
+  const tmp = join(tmpdir(), 'ruckel-rotated-src.mp4');
+  let res = run(ffmpeg, [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', `testsrc2=size=${ROTATED_SIZE}:rate=10:duration=1`,
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=44100:duration=1',
+    '-shortest',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '35', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '32k',
+    '-f', 'mp4', tmp,
+  ]);
+  if (res.status !== 0) fail(`generating rotated source failed:\n${res.stderr}`);
+  res = run(ffmpeg, [
     '-hide_banner', '-loglevel', 'error', '-y',
     '-display_rotation', '90',
-    '-i', join(fixturesDir, ROTATED_SOURCE),
+    '-i', tmp,
     '-c', 'copy', '-f', 'mp4', join(fixturesDir, ROTATED_NAME),
   ]);
   if (res.status !== 0) fail(`generating ${ROTATED_NAME} failed:\n${res.stderr}`);
+  rmSync(tmp, { force: true });
 }
 
 // Extensionless: byte-identical copy, drives the ADR-0011 fallback path.
